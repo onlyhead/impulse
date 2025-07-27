@@ -33,7 +33,7 @@ class LanInterface {
     bool setup_interface();
 
   public:
-    LanInterface(const std::string &interface = "", uint16_t port = 8000, const std::string &ipv6_addr = "");
+    LanInterface(const std::string &interface = "", uint16_t port = 7447, const std::string &ipv6_addr = "");
     ~LanInterface();
 
     bool start();
