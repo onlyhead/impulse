@@ -25,11 +25,8 @@ struct Discovery : public Message {
     int32_t capability_index;
 
     inline void serialize(char *buffer) const override { memcpy(buffer, this, sizeof(Discovery)); }
-
     inline void deserialize(const char *buffer) override { memcpy(this, buffer, sizeof(Discovery)); }
-
     inline uint32_t get_size() const override { return sizeof(Discovery); }
-
     inline std::string to_string() const override {
         return "AgentMessage{ipv6=" + std::string(ipv6) + ", capability=" + std::to_string(capability_index) +
                ", join_time=" + std::to_string(join_time) + ", orchestrator=" + (orchestrator ? "true" : "false") + "}";
@@ -41,11 +38,8 @@ struct Position : public Message {
     uint64_t timestamp;
 
     inline void serialize(char *buffer) const override { memcpy(buffer, this, sizeof(Position)); }
-
     inline void deserialize(const char *buffer) override { memcpy(this, buffer, sizeof(Position)); }
-
     inline uint32_t get_size() const override { return sizeof(Position); }
-
     inline std::string to_string() const override {
         return "Position{pose={point=(" + std::to_string(pose.point.x) + "," + std::to_string(pose.point.y) + "," +
                std::to_string(pose.point.z) + "), angle=(roll=" + std::to_string(pose.angle.roll) +

@@ -53,24 +53,6 @@ int main() {
     Agent robot3("Sprayer-Gamma", &lan3, 60);
     Agent robot4("Feeder-Delta", &lan4, 40);
 
-    // Start ARIS discovery
-    if (!robot1.start()) {
-        std::cerr << "Failed to start robot1" << std::endl;
-        return 1;
-    }
-    if (!robot2.start()) {
-        std::cerr << "Failed to start robot2" << std::endl;
-        return 1;
-    }
-    if (!robot3.start()) {
-        std::cerr << "Failed to start robot3" << std::endl;
-        return 1;
-    }
-    if (!robot4.start()) {
-        std::cerr << "Failed to start robot4" << std::endl;
-        return 1;
-    }
-
     std::cout << "\nAll robots started. Waiting for discovery..." << std::endl;
 
     auto start_time = std::chrono::steady_clock::now();
@@ -79,10 +61,10 @@ int main() {
 
         std::cout << "\n=== Current Network Status ===" << std::endl;
         robot1.print_status();
-        robot2.print_status();  
+        robot2.print_status();
         robot3.print_status();
         robot4.print_status();
-        
+
         // Send discovery messages
         robot1.send_discovery();
         robot2.send_discovery();

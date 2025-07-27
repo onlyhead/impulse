@@ -34,13 +34,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    int32_t capability = 75; // default
-
-    Agent participant(robot_name, &lan, capability);
-    if (!participant.start()) {
-        std::cerr << "Failed to start robot" << std::endl;
-        return 1;
-    }
+    Agent participant(robot_name, &lan, 75);
 
     std::cout << "Robot started. Waiting for discovery..." << std::endl;
 

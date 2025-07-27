@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <cstring>
 #include <fcntl.h>
+#include <functional>
 #include <iostream>
 #include <linux/if_tun.h>
 #include <net/if.h>
@@ -19,7 +20,6 @@
 #include <thread>
 #include <unistd.h>
 #include <vector>
-#include <functional>
 
 class LanInterface : public NetworkInterface {
   private:
@@ -39,12 +39,14 @@ class LanInterface : public NetworkInterface {
     void stop() override;
     void send_message(const std::string &dest_addr, uint16_t dest_port, const std::string &msg) override;
     void multicast_message(const std::string &msg) override;
-    void multicast_to_group(const std::vector<std::string> &dest_addrs, uint16_t dest_port, const std::string &msg) override;
+    void multicast_to_group(const std::vector<std::string> &dest_addrs, uint16_t dest_port,
+                            const std::string &msg) override;
     std::string get_address() const override;
     uint16_t get_port() const override;
     std::string get_interface_name() const override;
-    void set_message_callback(std::function<void(const std::string&, const std::string&, uint16_t)> callback) override;
-    
+    void
+    set_message_callback(std::function<void(const std::string &, const std::string &, uint16_t)> callback) override;
+
     // LAN-specific methods
     const std::string &get_ipv6() const;
 
@@ -55,7 +57,7 @@ class LanInterface : public NetworkInterface {
 // LanInterface Implementation
 LanInterface::LanInterface(const std::string &interface, uint16_t port, const std::string &ipv6_addr)
     : socket_fd_(-1), owns_interface_(false) {
-    
+
     port_ = port;
 
     if (interface.empty()) {
@@ -221,7 +223,7 @@ void LanInterface::send_message(const std::string &dest_addr, uint16_t dest_port
     src_addr.sin6_family = AF_INET6;
     src_addr.sin6_port = htons(port_); // Use our port as source port
     inet_pton(AF_INET6, address_.c_str(), &src_addr.sin6_addr);
-    
+
     if (bind(send_fd, (struct sockaddr *)&src_addr, sizeof(src_addr)) < 0) {
         close(send_fd);
         return;
@@ -265,7 +267,7 @@ void LanInterface::multicast_message(const std::string &msg) {
     src_addr.sin6_family = AF_INET6;
     src_addr.sin6_port = htons(port_); // Use our port as source port
     inet_pton(AF_INET6, address_.c_str(), &src_addr.sin6_addr);
-    
+
     if (bind(mcast_fd, (struct sockaddr *)&src_addr, sizeof(src_addr)) < 0) {
         close(mcast_fd);
         return;
@@ -306,7 +308,7 @@ void LanInterface::multicast_to_group(const std::vector<std::string> &dest_addrs
     src_addr.sin6_family = AF_INET6;
     src_addr.sin6_port = htons(port_); // Use our port as source port
     inet_pton(AF_INET6, address_.c_str(), &src_addr.sin6_addr);
-    
+
     if (bind(send_fd, (struct sockaddr *)&src_addr, sizeof(src_addr)) < 0) {
         close(send_fd);
         return;
@@ -378,6 +380,7 @@ void LanInterface::receive_loop() {
     }
 }
 
-inline void LanInterface::set_message_callback(std::function<void(const std::string&, const std::string&, uint16_t)> callback) {
+inline void
+LanInterface::set_message_callback(std::function<void(const std::string &, const std::string &, uint16_t)> callback) {
     message_callback_ = callback;
 }
