@@ -29,6 +29,10 @@ FetchContent_Declare(concord GIT_REPOSITORY https://github.com/onlyhead/concord.
 FetchContent_MakeAvailable(concord)
 list(APPEND ext_deps concord::concord)
 
+# FetchContent_Declare(capnproto GIT_REPOSITORY https://github.com/capnproto/capnproto.git GIT_TAG v1.2.0)
+# FetchContent_MakeAvailable(capnproto)
+# list(APPEND ext_deps CapnProto::capnp)
+
 # --------------------------------------------------------------------------------------------------
 add_library(${project_name} INTERFACE)
 # Allow users to link via `${project_name}::${project_name}`
