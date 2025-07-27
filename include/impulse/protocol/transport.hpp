@@ -23,6 +23,10 @@ template <typename MessageT = Message> class Transport {
 
     std::thread message_thread_;
     std::atomic<bool> running_;
+    bool continuous_;
+    std::chrono::milliseconds broadcast_interval_;
+    MessageT broadcast_message_;
+    bool has_broadcast_message_;
 
     // Generic message handler function
     std::function<void(const MessageT &, const std::string &)> message_handler_;
@@ -32,7 +36,8 @@ template <typename MessageT = Message> class Transport {
     void handle_incoming_message(const std::string &message, const std::string &from_addr);
 
   public:
-    Transport(const std::string &name, NetworkInterface *network_interface, int32_t capability = 75);
+    Transport(const std::string &name, NetworkInterface *network_interface, int32_t capability = 75,
+              bool continuous = false, std::chrono::milliseconds interval = std::chrono::milliseconds(1000));
     ~Transport();
 
     bool start();
@@ -45,11 +50,16 @@ template <typename MessageT = Message> class Transport {
 
     // Send a message
     void send(const MessageT &message);
+
+    // Set message for continuous broadcasting
+    void set_broadcast_message(const MessageT &message);
 };
 
 template <typename MessageT>
-inline Transport<MessageT>::Transport(const std::string &name, NetworkInterface *network_interface, int32_t capability)
-    : name_(name), capability_index_(capability), network_interface_(network_interface), running_(false) {
+inline Transport<MessageT>::Transport(const std::string &name, NetworkInterface *network_interface, int32_t capability,
+                                      bool continuous, std::chrono::milliseconds interval)
+    : name_(name), capability_index_(capability), network_interface_(network_interface), running_(false),
+      continuous_(continuous), broadcast_interval_(interval), has_broadcast_message_(false) {
 
     join_time_ =
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
@@ -81,7 +91,17 @@ template <typename MessageT> inline void Transport<MessageT>::stop() {
 }
 
 template <typename MessageT> inline void Transport<MessageT>::message_loop() {
+    auto last_broadcast = std::chrono::steady_clock::now();
+
     while (running_) {
+        if (continuous_ && has_broadcast_message_) {
+            auto now = std::chrono::steady_clock::now();
+            broadcast_message_.set_timestamp(now.time_since_epoch().count());
+            if (now - last_broadcast >= broadcast_interval_) {
+                send_message(broadcast_message_);
+                last_broadcast = now;
+            }
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 }
@@ -121,4 +141,9 @@ template <typename MessageT> inline int32_t Transport<MessageT>::get_capability(
 
 template <typename MessageT> inline std::string Transport<MessageT>::get_address() const {
     return network_interface_->get_address();
+}
+
+template <typename MessageT> inline void Transport<MessageT>::set_broadcast_message(const MessageT &message) {
+    broadcast_message_ = message;
+    has_broadcast_message_ = true;
 }
