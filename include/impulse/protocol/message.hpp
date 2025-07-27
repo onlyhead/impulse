@@ -47,8 +47,9 @@ struct Position : public Message {
     inline uint32_t get_size() const override { return sizeof(Position); }
 
     inline std::string to_string() const override {
-        return "Position{pose={point=(" + std::to_string(pose.point.x) + "," + std::to_string(pose.point.y) + "," + std::to_string(pose.point.z) + 
-               "), angle=(roll=" + std::to_string(pose.angle.roll) + ",pitch=" + std::to_string(pose.angle.pitch) + ",yaw=" + std::to_string(pose.angle.yaw) + 
+        return "Position{pose={point=(" + std::to_string(pose.point.x) + "," + std::to_string(pose.point.y) + "," +
+               std::to_string(pose.point.z) + "), angle=(roll=" + std::to_string(pose.angle.roll) +
+               ",pitch=" + std::to_string(pose.angle.pitch) + ",yaw=" + std::to_string(pose.angle.yaw) +
                ")}, timestamp=" + std::to_string(timestamp) + "}";
     }
 };

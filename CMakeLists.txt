@@ -12,6 +12,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED On)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(params
     -Wno-reorder
+    -Wno-unused-result
+    -Wno-unused-variable
+    -Wno-unused-parameter
 )
 
 string(TOUPPER ${project_name} project_name_upper)

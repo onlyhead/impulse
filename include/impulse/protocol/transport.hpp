@@ -24,7 +24,6 @@ template <typename MessageT = Message> class Transport {
     std::thread message_thread_;
     std::atomic<bool> running_;
 
-
     // Generic message handler function
     std::function<void(const MessageT &, const std::string &)> message_handler_;
 
@@ -61,7 +60,6 @@ template <typename MessageT> inline Transport<MessageT>::~Transport() { stop(); 
 
 template <typename MessageT> inline bool Transport<MessageT>::start() {
     std::cout << name_ << " starting transport" << std::endl;
-
 
     // Register callback to receive messages from network interface
     network_interface_->set_message_callback(
@@ -106,7 +104,6 @@ Transport<MessageT>::set_message_handler(std::function<void(const MessageT &, co
     message_handler_ = handler;
 }
 
-
 template <typename MessageT>
 inline void Transport<MessageT>::handle_incoming_message(const std::string &message, const std::string &from_addr) {
     if (message.size() == sizeof(MessageT)) {
@@ -122,4 +119,6 @@ inline void Transport<MessageT>::handle_incoming_message(const std::string &mess
 
 template <typename MessageT> inline int32_t Transport<MessageT>::get_capability() const { return capability_index_; }
 
-template <typename MessageT> inline std::string Transport<MessageT>::get_address() const { return network_interface_->get_address(); }
+template <typename MessageT> inline std::string Transport<MessageT>::get_address() const {
+    return network_interface_->get_address();
+}
