@@ -1,5 +1,6 @@
 #pragma once
 
+#include <concord/core/types.hpp>
 #include <concord/geographic/crs/datum.hpp>
 
 #include <cstdint>
@@ -17,13 +18,11 @@ class Message {
 
 struct Discovery : public Message {
     char ipv6[46];
-    char public_key[64];
     uint64_t timestamp;
     uint64_t join_time;
     concord::Datum zero_ref;
     bool orchestrator;
     int32_t capability_index;
-    char participant_uuids[10][37];
 
     inline void serialize(char *buffer) const override { memcpy(buffer, this, sizeof(Discovery)); }
 
@@ -34,5 +33,22 @@ struct Discovery : public Message {
     inline std::string to_string() const override {
         return "AgentMessage{ipv6=" + std::string(ipv6) + ", capability=" + std::to_string(capability_index) +
                ", join_time=" + std::to_string(join_time) + ", orchestrator=" + (orchestrator ? "true" : "false") + "}";
+    }
+};
+
+struct Position : public Message {
+    concord::Pose pose;
+    uint64_t timestamp;
+
+    inline void serialize(char *buffer) const override { memcpy(buffer, this, sizeof(Position)); }
+
+    inline void deserialize(const char *buffer) override { memcpy(this, buffer, sizeof(Position)); }
+
+    inline uint32_t get_size() const override { return sizeof(Position); }
+
+    inline std::string to_string() const override {
+        return "Position{pose={point=(" + std::to_string(pose.point.x) + "," + std::to_string(pose.point.y) + "," + std::to_string(pose.point.z) + 
+               "), angle=(roll=" + std::to_string(pose.angle.roll) + ",pitch=" + std::to_string(pose.angle.pitch) + ",yaw=" + std::to_string(pose.angle.yaw) + 
+               ")}, timestamp=" + std::to_string(timestamp) + "}";
     }
 };

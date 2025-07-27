@@ -72,7 +72,6 @@ inline void Agent::send_discovery() {
         std::chrono::system_clock::now().time_since_epoch()).count();
     msg.join_time = msg.timestamp;
     
-    strncpy(msg.public_key, "ed25519_key_placeholder", sizeof(msg.public_key) - 1);
     msg.orchestrator = false;
     msg.zero_ref = {40.7128, -74.0060, 0.0};
     msg.capability_index = transport_.get_capability();

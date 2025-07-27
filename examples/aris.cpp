@@ -33,16 +33,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    // Set capability based on robot name
     int32_t capability = 75; // default
-    if (robot_name.find("Tractor") != std::string::npos)
-        capability = 95;
-    else if (robot_name.find("Harvester") != std::string::npos)
-        capability = 80;
-    else if (robot_name.find("Sprayer") != std::string::npos)
-        capability = 60;
-    else if (robot_name.find("Feeder") != std::string::npos)
-        capability = 40;
 
     Agent participant(robot_name, &lan, capability);
     if (!participant.start()) {
