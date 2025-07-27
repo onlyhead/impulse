@@ -17,6 +17,7 @@
 #include <thread>
 #include <unistd.h>
 #include <vector>
+#include <functional>
 
 class LanInterface {
   private:
@@ -27,6 +28,8 @@ class LanInterface {
     std::thread receive_thread_;
     bool running_;
     bool owns_interface_;
+    
+    std::function<void(const std::string&, const std::string&, uint16_t)> message_callback_;
 
     int create_tun_interface(const std::string &name);
     std::string generate_robot_ipv6(int robot_id);
@@ -44,6 +47,7 @@ class LanInterface {
     const std::string &get_ipv6() const;
     uint16_t get_port() const;
     const std::string &get_interface() const;
+    void set_message_callback(std::function<void(const std::string&, const std::string&, uint16_t)> callback);
 
   private:
     void receive_loop();
@@ -154,6 +158,10 @@ bool LanInterface::start() {
     int reuse = 1;
     setsockopt(socket_fd_, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
 
+    // Enable multicast loopback so we receive our own messages
+    int loop = 1;
+    setsockopt(socket_fd_, IPPROTO_IPV6, IPV6_MULTICAST_LOOP, &loop, sizeof(loop));
+
     struct sockaddr_in6 addr = {};
     addr.sin6_family = AF_INET6;
     addr.sin6_port = htons(port_);
@@ -204,10 +212,13 @@ void LanInterface::send_message(const std::string &dest_addr, uint16_t dest_port
     int send_fd = socket(AF_INET6, SOCK_DGRAM, 0);
     if (send_fd < 0) return;
 
+    int reuse = 1;
+    setsockopt(send_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+
     // Bind to our specific IPv6 address
     struct sockaddr_in6 src_addr = {};
     src_addr.sin6_family = AF_INET6;
-    src_addr.sin6_port = 0; // Let kernel choose source port
+    src_addr.sin6_port = htons(port_); // Use our port as source port
     inet_pton(AF_INET6, ipv6_address_.c_str(), &src_addr.sin6_addr);
     
     if (bind(send_fd, (struct sockaddr *)&src_addr, sizeof(src_addr)) < 0) {
@@ -241,10 +252,17 @@ void LanInterface::multicast_message(const std::string &msg) {
     int mcast_fd = socket(AF_INET6, SOCK_DGRAM, 0);
     if (mcast_fd < 0) return;
 
+    int reuse = 1;
+    setsockopt(mcast_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+
+    // Enable multicast loopback so we receive our own messages
+    int loop = 1;
+    setsockopt(mcast_fd, IPPROTO_IPV6, IPV6_MULTICAST_LOOP, &loop, sizeof(loop));
+
     // Bind to our specific IPv6 address
     struct sockaddr_in6 src_addr = {};
     src_addr.sin6_family = AF_INET6;
-    src_addr.sin6_port = 0; // Let kernel choose source port
+    src_addr.sin6_port = htons(port_); // Use our port as source port
     inet_pton(AF_INET6, ipv6_address_.c_str(), &src_addr.sin6_addr);
     
     if (bind(mcast_fd, (struct sockaddr *)&src_addr, sizeof(src_addr)) < 0) {
@@ -266,7 +284,6 @@ void LanInterface::multicast_message(const std::string &msg) {
     ssize_t sent = sendto(mcast_fd, msg.c_str(), msg.length(), 0, (struct sockaddr *)&dest, sizeof(dest));
 
     if (sent > 0) {
-        std::cout << ipv6_address_ << " multicast: \"" << msg << "\" to all nodes" << std::endl;
     }
 
     close(mcast_fd);
@@ -280,10 +297,13 @@ void LanInterface::multicast_to_group(const std::vector<std::string> &dest_addrs
     int send_fd = socket(AF_INET6, SOCK_DGRAM, 0);
     if (send_fd < 0) return;
 
+    int reuse = 1;
+    setsockopt(send_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+
     // Bind to our specific IPv6 address
     struct sockaddr_in6 src_addr = {};
     src_addr.sin6_family = AF_INET6;
-    src_addr.sin6_port = 0; // Let kernel choose source port
+    src_addr.sin6_port = htons(port_); // Use our port as source port
     inet_pton(AF_INET6, ipv6_address_.c_str(), &src_addr.sin6_addr);
     
     if (bind(send_fd, (struct sockaddr *)&src_addr, sizeof(src_addr)) < 0) {
@@ -328,17 +348,33 @@ void LanInterface::receive_loop() {
     while (running_) {
         from_len = sizeof(from);
         ssize_t received =
-            recvfrom(socket_fd_, buffer, sizeof(buffer) - 1, MSG_DONTWAIT, (struct sockaddr *)&from, &from_len);
+            recvfrom(socket_fd_, buffer, sizeof(buffer), MSG_DONTWAIT, (struct sockaddr *)&from, &from_len);
 
         if (received > 0) {
-            buffer[received] = '\0';
             char addr_str[INET6_ADDRSTRLEN];
             inet_ntop(AF_INET6, &from.sin6_addr, addr_str, sizeof(addr_str));
 
-            std::cout << ipv6_address_ << " received: \"" << buffer << "\" from [" << addr_str
-                      << "]:" << ntohs(from.sin6_port) << std::endl;
+            // Skip messages from ourselves
+            if (std::string(addr_str) == ipv6_address_) {
+                continue;
+            }
+
+            // If callback is set, call it with the binary data
+            if (message_callback_) {
+                std::string message(buffer, received);
+                message_callback_(message, std::string(addr_str), ntohs(from.sin6_port));
+            } else {
+                // Fallback to text printing for non-callback users
+                buffer[std::min((ssize_t)1023, received)] = '\0';
+                std::cout << ipv6_address_ << " received: \"" << buffer << "\" from [" << addr_str
+                          << "]:" << ntohs(from.sin6_port) << std::endl;
+            }
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
+}
+
+inline void LanInterface::set_message_callback(std::function<void(const std::string&, const std::string&, uint16_t)> callback) {
+    message_callback_ = callback;
 }
