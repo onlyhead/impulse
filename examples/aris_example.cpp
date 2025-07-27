@@ -1,4 +1,4 @@
-#include "impulse/protocol/aris.hpp"
+#include "impulse/agents.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -47,10 +47,10 @@ int main() {
     }
 
     // Create ARIS robots with their LAN interfaces
-    Aris robot1("Tractor-Alpha", 1001, &lan1, 95);
-    Aris robot2("Harvester-Beta", 2002, &lan2, 80);
-    Aris robot3("Sprayer-Gamma", 3003, &lan3, 60);
-    Aris robot4("Feeder-Delta", 4004, &lan4, 40);
+    Agent robot1("Tractor-Alpha", &lan1, 95);
+    Agent robot2("Harvester-Beta", &lan2, 80);
+    Agent robot3("Sprayer-Gamma", &lan3, 60);
+    Agent robot4("Feeder-Delta", &lan4, 40);
 
     // Start ARIS discovery
     if (!robot1.start()) {
@@ -78,9 +78,15 @@ int main() {
 
         std::cout << "\n=== Current Network Status ===" << std::endl;
         robot1.print_status();
-        robot2.print_status();
+        robot2.print_status();  
         robot3.print_status();
         robot4.print_status();
+        
+        // Send discovery messages
+        robot1.send_discovery();
+        robot2.send_discovery();
+        robot3.send_discovery();
+        robot4.send_discovery();
     }
 
     if (!should_exit) {

@@ -1,4 +1,4 @@
-#include "impulse/protocol/aris.hpp"
+#include "impulse/agents.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -33,10 +33,6 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    // Generate a simple robot ID from the robot name hash
-    std::hash<std::string> hasher;
-    uint32_t robot_id = static_cast<uint32_t>(hasher(robot_name) % 9000 + 1000);
-
     // Set capability based on robot name
     int32_t capability = 75; // default
     if (robot_name.find("Tractor") != std::string::npos)
@@ -48,7 +44,7 @@ int main(int argc, char *argv[]) {
     else if (robot_name.find("Feeder") != std::string::npos)
         capability = 40;
 
-    Aris participant(robot_name, robot_id, &lan, capability);
+    Agent participant(robot_name, &lan, capability);
     if (!participant.start()) {
         std::cerr << "Failed to start robot" << std::endl;
         return 1;
@@ -62,6 +58,7 @@ int main(int argc, char *argv[]) {
 
         std::cout << "\n=== Current Network Status ===" << std::endl;
         participant.print_status();
+        participant.send_discovery();
     }
 
     if (!should_exit) {
