@@ -1,6 +1,6 @@
 #pragma once
 
-#include "impulse/network/lan.hpp"
+#include "impulse/network/interface.hpp"
 #include "impulse/protocol/message.hpp"
 
 #include <atomic>
@@ -19,7 +19,7 @@ template <typename MessageT = Message> class Transport {
     std::string name_;
     int32_t capability_index_;
     uint64_t join_time_;
-    LanInterface *lan_interface_;
+    NetworkInterface *network_interface_;
 
     std::thread message_thread_;
     std::atomic<bool> running_;
@@ -33,13 +33,13 @@ template <typename MessageT = Message> class Transport {
     void handle_incoming_message(const std::string &message, const std::string &from_addr);
 
   public:
-    Transport(const std::string &name, LanInterface *lan_interface, int32_t capability = 75);
+    Transport(const std::string &name, NetworkInterface *network_interface, int32_t capability = 75);
     ~Transport();
 
     bool start();
     void stop();
     int32_t get_capability() const;
-    std::string get_ipv6() const;
+    std::string get_address() const;
 
     // Set custom message handler
     void set_message_handler(std::function<void(const MessageT &, const std::string &)> handler);
@@ -49,8 +49,8 @@ template <typename MessageT = Message> class Transport {
 };
 
 template <typename MessageT>
-inline Transport<MessageT>::Transport(const std::string &name, LanInterface *lan_interface, int32_t capability)
-    : name_(name), capability_index_(capability), lan_interface_(lan_interface), running_(false) {
+inline Transport<MessageT>::Transport(const std::string &name, NetworkInterface *network_interface, int32_t capability)
+    : name_(name), capability_index_(capability), network_interface_(network_interface), running_(false) {
 
     join_time_ =
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
@@ -63,8 +63,8 @@ template <typename MessageT> inline bool Transport<MessageT>::start() {
     std::cout << name_ << " starting transport" << std::endl;
 
 
-    // Register callback to receive messages from LAN interface
-    lan_interface_->set_message_callback(
+    // Register callback to receive messages from network interface
+    network_interface_->set_message_callback(
         [this](const std::string &message, const std::string &from_addr, uint16_t from_port) {
             this->handle_incoming_message(message, from_addr);
         });
@@ -95,7 +95,7 @@ template <typename MessageT> inline void Transport<MessageT>::send_message(const
     msg.serialize(buffer.data());
     std::string message(buffer.data(), size);
 
-    lan_interface_->multicast_message(message);
+    network_interface_->multicast_message(message);
 }
 
 template <typename MessageT> inline void Transport<MessageT>::send(const MessageT &message) { send_message(message); }
@@ -122,4 +122,4 @@ inline void Transport<MessageT>::handle_incoming_message(const std::string &mess
 
 template <typename MessageT> inline int32_t Transport<MessageT>::get_capability() const { return capability_index_; }
 
-template <typename MessageT> inline std::string Transport<MessageT>::get_ipv6() const { return lan_interface_->get_ipv6(); }
+template <typename MessageT> inline std::string Transport<MessageT>::get_address() const { return network_interface_->get_address(); }

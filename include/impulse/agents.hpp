@@ -2,6 +2,7 @@
 
 #include "impulse/protocol/message.hpp"
 #include "impulse/protocol/transport.hpp"
+#include "impulse/network/interface.hpp"
 
 #include <chrono>
 #include <iostream>
@@ -21,7 +22,7 @@ class Agent {
     bool should_share_info_with(int32_t other_capability);
 
   public:
-    Agent(const std::string& name, LanInterface* lan_interface, int32_t capability = 75);
+    Agent(const std::string& name, NetworkInterface* network_interface, int32_t capability = 75);
     ~Agent();
 
     bool start();
@@ -30,11 +31,11 @@ class Agent {
     void send_discovery();
     
     int32_t get_capability() const;
-    std::string get_ipv6() const;
+    std::string get_address() const;
 };
 
-inline Agent::Agent(const std::string& name, LanInterface* lan_interface, int32_t capability)
-    : name_(name), transport_(name, lan_interface, capability) {
+inline Agent::Agent(const std::string& name, NetworkInterface* network_interface, int32_t capability)
+    : name_(name), transport_(name, network_interface, capability) {
     
     // Set up message handler for discovery messages
     transport_.set_message_handler([this](const Discovery& msg, const std::string& from_addr) {
@@ -56,8 +57,8 @@ inline bool Agent::start() {
         std::chrono::system_clock::now().time_since_epoch()).count();
     self_msg.join_time = self_msg.timestamp;
     self_msg.capability_index = transport_.get_capability();
-    strncpy(self_msg.ipv6, get_ipv6().c_str(), 45);
-    known_agents_[get_ipv6()] = self_msg;
+    strncpy(self_msg.ipv6, get_address().c_str(), 45);
+    known_agents_[get_address()] = self_msg;
     
     return transport_.start();
 }
@@ -75,7 +76,7 @@ inline void Agent::send_discovery() {
     msg.orchestrator = false;
     msg.zero_ref = {40.7128, -74.0060, 0.0};
     msg.capability_index = transport_.get_capability();
-    strncpy(msg.ipv6, get_ipv6().c_str(), 45);
+    strncpy(msg.ipv6, get_address().c_str(), 45);
     
     transport_.send(msg);
 }
@@ -110,7 +111,7 @@ inline bool Agent::should_share_info_with(int32_t other_capability) {
 inline void Agent::print_status() const {
     std::lock_guard<std::mutex> lock(agents_mutex_);
     std::cout << "\n" << name_ << " Status:" << std::endl;
-    std::cout << "  IPv6: " << get_ipv6() << std::endl;
+    std::cout << "  Address: " << get_address() << std::endl;
     std::cout << "  Capability: " << transport_.get_capability() << "/100" << std::endl;
     std::cout << "  Known agents: " << known_agents_.size() << std::endl;
     for (const auto& [ipv6, agent] : known_agents_) {
@@ -125,6 +126,6 @@ inline int32_t Agent::get_capability() const {
     return transport_.get_capability();
 }
 
-inline std::string Agent::get_ipv6() const {
-    return transport_.get_ipv6();
+inline std::string Agent::get_address() const {
+    return transport_.get_address();
 }

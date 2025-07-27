@@ -1,5 +1,7 @@
 #pragma once
 
+#include "impulse/network/interface.hpp"
+
 #include <arpa/inet.h>
 #include <atomic>
 #include <chrono>
@@ -19,17 +21,11 @@
 #include <vector>
 #include <functional>
 
-class LanInterface {
+class LanInterface : public NetworkInterface {
   private:
-    std::string interface_name_;
-    std::string ipv6_address_;
-    uint16_t port_;
     int socket_fd_;
     std::thread receive_thread_;
-    bool running_;
     bool owns_interface_;
-    
-    std::function<void(const std::string&, const std::string&, uint16_t)> message_callback_;
 
     int create_tun_interface(const std::string &name);
     std::string generate_robot_ipv6(int robot_id);
@@ -39,15 +35,18 @@ class LanInterface {
     LanInterface(const std::string &interface = "", uint16_t port = 7447, const std::string &ipv6_addr = "");
     ~LanInterface();
 
-    bool start();
-    void stop();
-    void send_message(const std::string &dest_addr, uint16_t dest_port, const std::string &msg);
-    void multicast_message(const std::string &msg);
-    void multicast_to_group(const std::vector<std::string> &dest_addrs, uint16_t dest_port, const std::string &msg);
+    bool start() override;
+    void stop() override;
+    void send_message(const std::string &dest_addr, uint16_t dest_port, const std::string &msg) override;
+    void multicast_message(const std::string &msg) override;
+    void multicast_to_group(const std::vector<std::string> &dest_addrs, uint16_t dest_port, const std::string &msg) override;
+    std::string get_address() const override;
+    uint16_t get_port() const override;
+    std::string get_interface_name() const override;
+    void set_message_callback(std::function<void(const std::string&, const std::string&, uint16_t)> callback) override;
+    
+    // LAN-specific methods
     const std::string &get_ipv6() const;
-    uint16_t get_port() const;
-    const std::string &get_interface() const;
-    void set_message_callback(std::function<void(const std::string&, const std::string&, uint16_t)> callback);
 
   private:
     void receive_loop();
@@ -55,7 +54,9 @@ class LanInterface {
 
 // LanInterface Implementation
 LanInterface::LanInterface(const std::string &interface, uint16_t port, const std::string &ipv6_addr)
-    : socket_fd_(-1), running_(false), owns_interface_(false), port_(port) {
+    : socket_fd_(-1), owns_interface_(false) {
+    
+    port_ = port;
 
     if (interface.empty()) {
         interface_name_ = "robot_auto";
@@ -71,9 +72,9 @@ LanInterface::LanInterface(const std::string &interface, uint16_t port, const st
         std::mt19937 gen(rd());
         std::uniform_int_distribution<> dis(1, 65535);
         int robot_id = dis(gen);
-        ipv6_address_ = generate_robot_ipv6(robot_id);
+        address_ = generate_robot_ipv6(robot_id);
     } else {
-        ipv6_address_ = ipv6_addr;
+        address_ = ipv6_addr;
     }
 }
 
@@ -131,11 +132,11 @@ bool LanInterface::setup_interface() {
         }
     }
 
-    std::string cmd = "ip -6 addr add " + ipv6_address_ + "/64 dev " + interface_name_ + " 2>/dev/null";
+    std::string cmd = "ip -6 addr add " + address_ + "/64 dev " + interface_name_ + " 2>/dev/null";
     if (system(cmd.c_str()) != 0) {
         std::cerr << "Failed to add IPv6 address (try with sudo)" << std::endl;
     } else {
-        std::cout << "Added IPv6 address " << ipv6_address_ << " to " << interface_name_ << std::endl;
+        std::cout << "Added IPv6 address " << address_ << " to " << interface_name_ << std::endl;
     }
 
     return true;
@@ -148,7 +149,7 @@ bool LanInterface::start() {
 
     socket_fd_ = socket(AF_INET6, SOCK_DGRAM, 0);
     if (socket_fd_ < 0) {
-        std::cerr << ipv6_address_ << ": Failed to create socket" << std::endl;
+        std::cerr << address_ << ": Failed to create socket" << std::endl;
         return false;
     }
 
@@ -166,17 +167,17 @@ bool LanInterface::start() {
     addr.sin6_family = AF_INET6;
     addr.sin6_port = htons(port_);
 
-    if (inet_pton(AF_INET6, ipv6_address_.c_str(), &addr.sin6_addr) == 1) {
+    if (inet_pton(AF_INET6, address_.c_str(), &addr.sin6_addr) == 1) {
         if (bind(socket_fd_, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
-            std::cout << ipv6_address_ << " bound to [" << ipv6_address_ << "]:" << port_ << std::endl;
+            std::cout << address_ << " bound to [" << address_ << "]:" << port_ << std::endl;
         } else {
             addr.sin6_addr = in6addr_any;
             if (bind(socket_fd_, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-                std::cerr << ipv6_address_ << ": Failed to bind to port " << port_ << std::endl;
+                std::cerr << address_ << ": Failed to bind to port " << port_ << std::endl;
                 close(socket_fd_);
                 return false;
             }
-            std::cout << ipv6_address_ << " bound to [::] (any):" << port_ << std::endl;
+            std::cout << address_ << " bound to [::] (any):" << port_ << std::endl;
         }
     }
 
@@ -200,7 +201,7 @@ void LanInterface::stop() {
         std::string cmd = "ip link del " + interface_name_ + " 2>/dev/null";
         system(cmd.c_str());
     } else {
-        std::string cmd = "ip -6 addr del " + ipv6_address_ + "/64 dev " + interface_name_ + " 2>/dev/null";
+        std::string cmd = "ip -6 addr del " + address_ + "/64 dev " + interface_name_ + " 2>/dev/null";
         system(cmd.c_str());
     }
 }
@@ -219,7 +220,7 @@ void LanInterface::send_message(const std::string &dest_addr, uint16_t dest_port
     struct sockaddr_in6 src_addr = {};
     src_addr.sin6_family = AF_INET6;
     src_addr.sin6_port = htons(port_); // Use our port as source port
-    inet_pton(AF_INET6, ipv6_address_.c_str(), &src_addr.sin6_addr);
+    inet_pton(AF_INET6, address_.c_str(), &src_addr.sin6_addr);
     
     if (bind(send_fd, (struct sockaddr *)&src_addr, sizeof(src_addr)) < 0) {
         close(send_fd);
@@ -231,7 +232,7 @@ void LanInterface::send_message(const std::string &dest_addr, uint16_t dest_port
     dest.sin6_port = htons(dest_port);
 
     if (inet_pton(AF_INET6, dest_addr.c_str(), &dest.sin6_addr) != 1) {
-        std::cerr << ipv6_address_ << ": Invalid destination address" << std::endl;
+        std::cerr << address_ << ": Invalid destination address" << std::endl;
         close(send_fd);
         return;
     }
@@ -239,7 +240,7 @@ void LanInterface::send_message(const std::string &dest_addr, uint16_t dest_port
     ssize_t sent = sendto(send_fd, msg.c_str(), msg.length(), 0, (struct sockaddr *)&dest, sizeof(dest));
 
     if (sent > 0) {
-        std::cout << ipv6_address_ << " sent: \"" << msg << "\" to [" << dest_addr << "]:" << dest_port << std::endl;
+        std::cout << address_ << " sent: \"" << msg << "\" to [" << dest_addr << "]:" << dest_port << std::endl;
     }
 
     close(send_fd);
@@ -263,7 +264,7 @@ void LanInterface::multicast_message(const std::string &msg) {
     struct sockaddr_in6 src_addr = {};
     src_addr.sin6_family = AF_INET6;
     src_addr.sin6_port = htons(port_); // Use our port as source port
-    inet_pton(AF_INET6, ipv6_address_.c_str(), &src_addr.sin6_addr);
+    inet_pton(AF_INET6, address_.c_str(), &src_addr.sin6_addr);
     
     if (bind(mcast_fd, (struct sockaddr *)&src_addr, sizeof(src_addr)) < 0) {
         close(mcast_fd);
@@ -276,7 +277,7 @@ void LanInterface::multicast_message(const std::string &msg) {
     dest.sin6_port = htons(port_);
 
     if (inet_pton(AF_INET6, "ff02::1", &dest.sin6_addr) != 1) {
-        std::cerr << ipv6_address_ << ": Failed to set multicast address" << std::endl;
+        std::cerr << address_ << ": Failed to set multicast address" << std::endl;
         close(mcast_fd);
         return;
     }
@@ -304,14 +305,14 @@ void LanInterface::multicast_to_group(const std::vector<std::string> &dest_addrs
     struct sockaddr_in6 src_addr = {};
     src_addr.sin6_family = AF_INET6;
     src_addr.sin6_port = htons(port_); // Use our port as source port
-    inet_pton(AF_INET6, ipv6_address_.c_str(), &src_addr.sin6_addr);
+    inet_pton(AF_INET6, address_.c_str(), &src_addr.sin6_addr);
     
     if (bind(send_fd, (struct sockaddr *)&src_addr, sizeof(src_addr)) < 0) {
         close(send_fd);
         return;
     }
 
-    std::cout << ipv6_address_ << " multicasting: \"" << msg << "\" to group [";
+    std::cout << address_ << " multicasting: \"" << msg << "\" to group [";
     for (size_t i = 0; i < dest_addrs.size(); ++i) {
         if (i > 0) std::cout << ", ";
         std::cout << dest_addrs[i];
@@ -324,7 +325,7 @@ void LanInterface::multicast_to_group(const std::vector<std::string> &dest_addrs
         dest.sin6_port = htons(dest_port);
 
         if (inet_pton(AF_INET6, dest_addr.c_str(), &dest.sin6_addr) != 1) {
-            std::cerr << ipv6_address_ << ": Invalid destination address " << dest_addr << std::endl;
+            std::cerr << address_ << ": Invalid destination address " << dest_addr << std::endl;
             continue;
         }
 
@@ -334,11 +335,13 @@ void LanInterface::multicast_to_group(const std::vector<std::string> &dest_addrs
     close(send_fd);
 }
 
-const std::string &LanInterface::get_ipv6() const { return ipv6_address_; }
+const std::string &LanInterface::get_ipv6() const { return address_; }
+
+std::string LanInterface::get_address() const { return address_; }
 
 uint16_t LanInterface::get_port() const { return port_; }
 
-const std::string &LanInterface::get_interface() const { return interface_name_; }
+std::string LanInterface::get_interface_name() const { return interface_name_; }
 
 void LanInterface::receive_loop() {
     char buffer[1024];
@@ -355,7 +358,7 @@ void LanInterface::receive_loop() {
             inet_ntop(AF_INET6, &from.sin6_addr, addr_str, sizeof(addr_str));
 
             // Skip messages from ourselves
-            if (std::string(addr_str) == ipv6_address_) {
+            if (std::string(addr_str) == address_) {
                 continue;
             }
 
@@ -366,7 +369,7 @@ void LanInterface::receive_loop() {
             } else {
                 // Fallback to text printing for non-callback users
                 buffer[std::min((ssize_t)1023, received)] = '\0';
-                std::cout << ipv6_address_ << " received: \"" << buffer << "\" from [" << addr_str
+                std::cout << address_ << " received: \"" << buffer << "\" from [" << addr_str
                           << "]:" << ntohs(from.sin6_port) << std::endl;
             }
         }

@@ -1,4 +1,5 @@
 #include "impulse/agents.hpp"
+#include "impulse/network/lan.hpp"
 
 #include <atomic>
 #include <chrono>

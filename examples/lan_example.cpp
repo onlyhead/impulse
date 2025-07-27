@@ -45,13 +45,13 @@ int main() {
     }
 
     std::cout << "\nActive robots:" << std::endl;
-    std::cout << "  - " << robot1.get_interface() << " IPv6: [" << robot1.get_ipv6() << "]:" << robot1.get_port()
+    std::cout << "  - " << robot1.get_interface_name() << " IPv6: [" << robot1.get_ipv6() << "]:" << robot1.get_port()
               << std::endl;
-    std::cout << "  - " << robot2.get_interface() << " IPv6: [" << robot2.get_ipv6() << "]:" << robot2.get_port()
+    std::cout << "  - " << robot2.get_interface_name() << " IPv6: [" << robot2.get_ipv6() << "]:" << robot2.get_port()
               << std::endl;
-    std::cout << "  - " << robot3.get_interface() << " IPv6: [" << robot3.get_ipv6() << "]:" << robot3.get_port()
+    std::cout << "  - " << robot3.get_interface_name() << " IPv6: [" << robot3.get_ipv6() << "]:" << robot3.get_port()
               << std::endl;
-    std::cout << "  - " << robot4.get_interface() << " IPv6: [" << robot4.get_ipv6() << "]:" << robot4.get_port()
+    std::cout << "  - " << robot4.get_interface_name() << " IPv6: [" << robot4.get_ipv6() << "]:" << robot4.get_port()
               << std::endl;
 
     std::cout << "\nPress 'c' to continue with multicast demo, 'q' to quit: ";
