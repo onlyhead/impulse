@@ -200,24 +200,57 @@ void LanInterface::stop() {
 void LanInterface::send_message(const std::string &dest_addr, uint16_t dest_port, const std::string &msg) {
     if (socket_fd_ < 0) return;
 
+    // Create a separate socket bound to our specific IPv6 address
+    int send_fd = socket(AF_INET6, SOCK_DGRAM, 0);
+    if (send_fd < 0) return;
+
+    // Bind to our specific IPv6 address
+    struct sockaddr_in6 src_addr = {};
+    src_addr.sin6_family = AF_INET6;
+    src_addr.sin6_port = 0; // Let kernel choose source port
+    inet_pton(AF_INET6, ipv6_address_.c_str(), &src_addr.sin6_addr);
+    
+    if (bind(send_fd, (struct sockaddr *)&src_addr, sizeof(src_addr)) < 0) {
+        close(send_fd);
+        return;
+    }
+
     struct sockaddr_in6 dest = {};
     dest.sin6_family = AF_INET6;
     dest.sin6_port = htons(dest_port);
 
     if (inet_pton(AF_INET6, dest_addr.c_str(), &dest.sin6_addr) != 1) {
         std::cerr << ipv6_address_ << ": Invalid destination address" << std::endl;
+        close(send_fd);
         return;
     }
 
-    ssize_t sent = sendto(socket_fd_, msg.c_str(), msg.length(), 0, (struct sockaddr *)&dest, sizeof(dest));
+    ssize_t sent = sendto(send_fd, msg.c_str(), msg.length(), 0, (struct sockaddr *)&dest, sizeof(dest));
 
     if (sent > 0) {
         std::cout << ipv6_address_ << " sent: \"" << msg << "\" to [" << dest_addr << "]:" << dest_port << std::endl;
     }
+
+    close(send_fd);
 }
 
 void LanInterface::multicast_message(const std::string &msg) {
     if (socket_fd_ < 0) return;
+
+    // Create a separate socket for multicast with our specific source address
+    int mcast_fd = socket(AF_INET6, SOCK_DGRAM, 0);
+    if (mcast_fd < 0) return;
+
+    // Bind to our specific IPv6 address
+    struct sockaddr_in6 src_addr = {};
+    src_addr.sin6_family = AF_INET6;
+    src_addr.sin6_port = 0; // Let kernel choose source port
+    inet_pton(AF_INET6, ipv6_address_.c_str(), &src_addr.sin6_addr);
+    
+    if (bind(mcast_fd, (struct sockaddr *)&src_addr, sizeof(src_addr)) < 0) {
+        close(mcast_fd);
+        return;
+    }
 
     // Use IPv6 multicast address ff02::1 (all nodes multicast)
     struct sockaddr_in6 dest = {};
@@ -226,19 +259,37 @@ void LanInterface::multicast_message(const std::string &msg) {
 
     if (inet_pton(AF_INET6, "ff02::1", &dest.sin6_addr) != 1) {
         std::cerr << ipv6_address_ << ": Failed to set multicast address" << std::endl;
+        close(mcast_fd);
         return;
     }
 
-    ssize_t sent = sendto(socket_fd_, msg.c_str(), msg.length(), 0, (struct sockaddr *)&dest, sizeof(dest));
+    ssize_t sent = sendto(mcast_fd, msg.c_str(), msg.length(), 0, (struct sockaddr *)&dest, sizeof(dest));
 
     if (sent > 0) {
         std::cout << ipv6_address_ << " multicast: \"" << msg << "\" to all nodes" << std::endl;
     }
+
+    close(mcast_fd);
 }
 
 void LanInterface::multicast_to_group(const std::vector<std::string> &dest_addrs, uint16_t dest_port,
                                       const std::string &msg) {
     if (socket_fd_ < 0) return;
+
+    // Create a separate socket bound to our specific IPv6 address
+    int send_fd = socket(AF_INET6, SOCK_DGRAM, 0);
+    if (send_fd < 0) return;
+
+    // Bind to our specific IPv6 address
+    struct sockaddr_in6 src_addr = {};
+    src_addr.sin6_family = AF_INET6;
+    src_addr.sin6_port = 0; // Let kernel choose source port
+    inet_pton(AF_INET6, ipv6_address_.c_str(), &src_addr.sin6_addr);
+    
+    if (bind(send_fd, (struct sockaddr *)&src_addr, sizeof(src_addr)) < 0) {
+        close(send_fd);
+        return;
+    }
 
     std::cout << ipv6_address_ << " multicasting: \"" << msg << "\" to group [";
     for (size_t i = 0; i < dest_addrs.size(); ++i) {
@@ -257,8 +308,10 @@ void LanInterface::multicast_to_group(const std::vector<std::string> &dest_addrs
             continue;
         }
 
-        sendto(socket_fd_, msg.c_str(), msg.length(), 0, (struct sockaddr *)&dest, sizeof(dest));
+        sendto(send_fd, msg.c_str(), msg.length(), 0, (struct sockaddr *)&dest, sizeof(dest));
     }
+
+    close(send_fd);
 }
 
 const std::string &LanInterface::get_ipv6() const { return ipv6_address_; }
