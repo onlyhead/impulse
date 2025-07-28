@@ -21,6 +21,8 @@
 #include <unistd.h>
 #include <vector>
 
+namespace impulse {
+
 class LanInterface : public NetworkInterface {
   private:
     int socket_fd_;
@@ -365,3 +367,5 @@ class LanInterface : public NetworkInterface {
     // LAN-specific methods
     inline const std::string &get_ipv6() const { return address_; }
 };
+
+} // namespace impulse

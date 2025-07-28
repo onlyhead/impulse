@@ -15,36 +15,34 @@ class Agent {
   private:
     std::string name_;
     std::string address_;
-    Transport<Discovery> discovery_;
-    Transport<Communication> communication_;
-    Transport<Position> position_;
+    impulse::Transport<impulse::Discovery> discovery_;
+    impulse::Transport<impulse::Communication> communication_;
+    impulse::Transport<impulse::Position> position_;
 
   public:
-    std::map<std::string, Discovery> all_discoveries_;
-    std::map<std::string, Communication> all_communication_;
-    std::map<std::string, Position> all_position_;
+    std::map<std::string, impulse::Discovery> all_discoveries_;
+    std::map<std::string, impulse::Communication> all_communication_;
+    std::map<std::string, impulse::Position> all_position_;
 
-    inline Agent(const std::string &name, NetworkInterface *network_interface, Discovery &discovery_msg,
-                 Communication &communication_msg)
+    inline Agent(const std::string &name, impulse::NetworkInterface *network_interface,
+                 impulse::Discovery &discovery_msg, impulse::Communication &communication_msg)
         : name_(name), address_(network_interface->get_address()), discovery_(name, network_interface),
           communication_(name, network_interface), position_(name, network_interface) {
 
         all_discoveries_[address_] = discovery_msg;
-        discovery_.set_message_handler([this](const Discovery &msg, const std::string address, const uint16_t) {
-            all_discoveries_[address] = msg;
-        });
+        discovery_.set_message_handler([this](const impulse::Discovery &msg, const std::string address,
+                                              const uint16_t) { all_discoveries_[address] = msg; });
         discovery_.set_broadcast(discovery_msg);
 
         all_communication_[address_] = communication_msg;
-        communication_.set_message_handler([this](const Communication &msg, const std::string address, const uint16_t) {
-            all_communication_[address] = msg;
-        });
+        communication_.set_message_handler([this](const impulse::Communication &msg, const std::string address,
+                                                  const uint16_t) { all_communication_[address] = msg; });
         communication_.set_broadcast(communication_msg);
 
-        position_.set_message_handler(
-            [this](const Position &msg, const std::string address, const uint16_t) { all_position_[address] = msg; });
+        position_.set_message_handler([this](const impulse::Position &msg, const std::string address, const uint16_t) {
+            all_position_[address] = msg;
+        });
 
-        // Set up unified message routing
         network_interface->set_message_callback(
             [this](const std::string &message, const std::string &from_addr, uint16_t from_port) {
                 discovery_.handle_incoming_message(message, from_addr, from_port);
@@ -55,7 +53,7 @@ class Agent {
 
     inline ~Agent() {}
 
-    inline void update_position(const Position &position) {
+    inline void update_position(const impulse::Position &position) {
         all_position_[address_] = position;
         position_.send_message(position);
     }
@@ -82,7 +80,7 @@ int main(int argc, char *argv[]) {
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
 
-    LanInterface lan("eno2");
+    impulse::LanInterface lan("eno2");
     if (!lan.start()) {
         std::cerr << "Failed to start LAN interface" << std::endl;
         return 1;
@@ -91,21 +89,21 @@ int main(int argc, char *argv[]) {
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
             .count();
 
-    Discovery self_msg = {};
+    impulse::Discovery self_msg = {};
     self_msg.timestamp = now_time;
     self_msg.join_time = now_time; // Set join_time once at startup
     self_msg.zero_ref = {40.7128, -74.0060, 0.0};
     self_msg.orchestrator = false;
     self_msg.capability_index = 64;
 
-    Communication self_comm_msg = {};
+    impulse::Communication self_comm_msg = {};
     self_comm_msg.timestamp = now_time;
-    self_comm_msg.transport_type = TransportType::dds;
-    self_comm_msg.serialization_type = SerializationType::ros;
+    self_comm_msg.transport_type = impulse::TransportType::dds;
+    self_comm_msg.serialization_type = impulse::SerializationType::ros;
 
     Agent participant(robot_name, &lan, self_msg, self_comm_msg);
 
-    Position position_msg = {};
+    impulse::Position position_msg = {};
     position_msg.timestamp = now_time;
     position_msg.pose.point = {40.7128, -74.0060, 0.0};
     participant.update_position(position_msg);

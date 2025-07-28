@@ -7,6 +7,8 @@
 #include <string>
 #include <thread>
 
+using namespace impulse;
+
 // Global flag for graceful shutdown
 std::atomic<bool> should_exit{false};
 
