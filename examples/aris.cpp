@@ -41,18 +41,19 @@ class Agent {
         communication_.set_broadcast_message(communication_msg);
 
         // Set up unified message routing
-        network_interface->set_message_callback([this](const std::string &message, const std::string &from_addr, uint16_t from_port) {
-            discovery_.handle_incoming_message(message, from_addr, from_port);
-            communication_.handle_incoming_message(message, from_addr, from_port);
-        });
+        network_interface->set_message_callback(
+            [this](const std::string &message, const std::string &from_addr, uint16_t from_port) {
+                discovery_.handle_incoming_message(message, from_addr, from_port);
+                communication_.handle_incoming_message(message, from_addr, from_port);
+            });
 
         discovery_.start();
         communication_.start();
     }
 
-    inline ~Agent() { 
-        discovery_.stop(); 
-        communication_.stop(); 
+    inline ~Agent() {
+        discovery_.stop();
+        communication_.stop();
     }
 };
 

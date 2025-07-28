@@ -66,10 +66,10 @@ enum struct TransportType : uint8_t {
 
 enum struct SerializationType : uint8_t {
     ros = 0,
-    capnproto = 0,
-    flatbuffers = 1,
-    json = 2,
-    protobuf = 3,
+    capnproto = 1,
+    flatbuffers = 2,
+    json = 3,
+    protobuf = 4,
 };
 
 struct __attribute__((packed)) Communication : public Message {
@@ -82,8 +82,49 @@ struct __attribute__((packed)) Communication : public Message {
     inline void deserialize(const char *buffer) override { memcpy(this, buffer, sizeof(Communication)); }
     inline uint32_t get_size() const override { return sizeof(Communication); }
     inline std::string to_string() const override {
-        return "Communication{transport_type=" + std::to_string(static_cast<int>(transport_type)) +
-               ", serialization_type=" + std::to_string(static_cast<int>(serialization_type)) + "}";
+        std::string transport_type_str;
+        switch (transport_type) {
+        case TransportType::dds:
+            transport_type_str = "dds";
+            break;
+        case TransportType::zenoh:
+            transport_type_str = "zenoh";
+            break;
+        case TransportType::zeromq:
+            transport_type_str = "zeromq";
+            break;
+        case TransportType::mqtt:
+            transport_type_str = "mqtt";
+            break;
+        default:
+            transport_type_str = "unknown";
+            break;
+        }
+
+        std::string serialization_type_str;
+        switch (serialization_type) {
+        case SerializationType::ros:
+            serialization_type_str = "ros";
+            break;
+        case SerializationType::capnproto:
+            serialization_type_str = "capnproto";
+            break;
+        case SerializationType::flatbuffers:
+            serialization_type_str = "flatbuffers";
+            break;
+        case SerializationType::json:
+            serialization_type_str = "json";
+            break;
+        case SerializationType::protobuf:
+            serialization_type_str = "protobuf";
+            break;
+        default:
+            serialization_type_str = "unknown";
+            break;
+        }
+
+        return "Communication{transport_type=" + transport_type_str + ", serialization_type=" + serialization_type_str +
+               "}";
     }
     inline void set_timestamp(uint64_t timestamp) override { this->timestamp = timestamp; }
 };
