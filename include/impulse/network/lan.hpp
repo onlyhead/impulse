@@ -23,6 +23,8 @@
 
 namespace impulse {
 
+    enum struct ipv6_type { OS, ULA, DHCP };
+
     class LanInterface : public NetworkInterface {
       private:
         int socket_fd_;
@@ -196,7 +198,7 @@ namespace impulse {
         }
 
         inline LanInterface(const std::string &interface = "", uint16_t port = 7447, const std::string &ipv6_addr = "",
-                            bool use_dhcp = false)
+                            ipv6_type type = ipv6_type::ULA)
             : socket_fd_(-1), owns_interface_(false) {
 
             port_ = port;
@@ -212,14 +214,23 @@ namespace impulse {
 
             if (!ipv6_addr.empty()) {
                 address_ = ipv6_addr;
-            } else if (use_dhcp) {
-                address_ = request_dhcpv6_address(); // Get unique address from router
             } else {
-                std::random_device rd;
-                std::mt19937 gen(rd());
-                std::uniform_int_distribution<> dis(1, 65535);
-                int robot_id = dis(gen);
-                address_ = generate_robot_ipv6(robot_id); // Default: ULA
+                switch (type) {
+                case ipv6_type::OS:
+                    address_ = request_dhcpv6_address();
+                    break;
+                case ipv6_type::ULA: {
+                    std::random_device rd;
+                    std::mt19937 gen(rd());
+                    std::uniform_int_distribution<> dis(1, 65535);
+                    int robot_id = dis(gen);
+                    address_ = generate_robot_ipv6(robot_id);
+                    break;
+                }
+                case ipv6_type::DHCP:
+                    address_ = request_dhcpv6_address();
+                    break;
+                }
             }
         }
 
