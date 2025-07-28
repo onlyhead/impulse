@@ -32,7 +32,6 @@ template <typename MessageT = Message> class Transport {
 
     void message_loop();
     void send_message(const MessageT &msg);
-    void handle_incoming_message(const std::string &message, const std::string &from_addr, uint16_t from_port);
 
   public:
     Transport(const std::string &name, NetworkInterface *network_interface, bool continuous = false,
@@ -51,6 +50,9 @@ template <typename MessageT = Message> class Transport {
 
     // Set message for continuous broadcasting
     void set_broadcast_message(const MessageT &message);
+
+    // Handle incoming message (for external routing)
+    void handle_incoming_message(const std::string &message, const std::string &from_addr, uint16_t from_port);
 };
 
 template <typename MessageT>
@@ -68,12 +70,6 @@ template <typename MessageT> inline Transport<MessageT>::~Transport() { stop(); 
 
 template <typename MessageT> inline bool Transport<MessageT>::start() {
     std::cout << name_ << " starting transport" << std::endl;
-
-    // Register callback to receive messages from network interface
-    network_interface_->set_message_callback(
-        [this](const std::string &message, const std::string &from_addr, uint16_t from_port) {
-            this->handle_incoming_message(message, from_addr, from_port);
-        });
 
     running_ = true;
     message_thread_ = std::thread(&Transport<MessageT>::message_loop, this);
@@ -124,8 +120,8 @@ Transport<MessageT>::set_message_handler(std::function<void(const MessageT &, co
 
 template <typename MessageT>
 inline void Transport<MessageT>::handle_incoming_message(const std::string &message, const std::string &from_addr, uint16_t from_port) {
-    if (message.size() == sizeof(MessageT)) {
-        MessageT msg;
+    MessageT msg;
+    if (message.size() == msg.get_size()) {
         msg.deserialize(message.c_str());
 
         // Call custom handler if set

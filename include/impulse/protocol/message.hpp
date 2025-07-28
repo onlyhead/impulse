@@ -18,7 +18,7 @@ class Message {
     virtual void set_timestamp(uint64_t timestamp) = 0;
 };
 
-struct Discovery : public Message {
+struct __attribute__((packed)) Discovery : public Message {
     uint64_t timestamp;
     uint64_t join_time;
     char ipv6[46];
@@ -40,7 +40,7 @@ struct Discovery : public Message {
     inline void set_timestamp(uint64_t timestamp) override { this->timestamp = timestamp; }
 };
 
-struct Position : public Message {
+struct __attribute__((packed)) Position : public Message {
     uint64_t timestamp;
     char ipv6[46];
     concord::Pose pose;
@@ -72,7 +72,7 @@ enum struct SerializationType : uint8_t {
     protobuf = 3,
 };
 
-struct Communication : public Message {
+struct __attribute__((packed)) Communication : public Message {
     uint64_t timestamp;
     char ipv6[46];
     TransportType transport_type;

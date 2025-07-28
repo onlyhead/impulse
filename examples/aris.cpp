@@ -32,7 +32,6 @@ class Agent {
             all_discoveries_[agent_ipv6] = msg;
         });
         discovery_.set_broadcast_message(discovery_msg);
-        discovery_.start();
 
         all_communication_[communication_msg.ipv6] = communication_msg;
         communication_.set_message_handler([this](const Communication &msg, const std::string, const uint16_t) {
@@ -40,10 +39,21 @@ class Agent {
             all_communication_[agent_ipv6] = msg;
         });
         communication_.set_broadcast_message(communication_msg);
+
+        // Set up unified message routing
+        network_interface->set_message_callback([this](const std::string &message, const std::string &from_addr, uint16_t from_port) {
+            discovery_.handle_incoming_message(message, from_addr, from_port);
+            communication_.handle_incoming_message(message, from_addr, from_port);
+        });
+
+        discovery_.start();
         communication_.start();
     }
 
-    inline ~Agent() { discovery_.stop(); }
+    inline ~Agent() { 
+        discovery_.stop(); 
+        communication_.stop(); 
+    }
 };
 
 std::atomic<bool> should_exit{false};
@@ -76,11 +86,11 @@ int main(int argc, char *argv[]) {
             .count();
 
     Discovery self_msg = {};
-    strncpy(self_msg.ipv6, lan.get_address().c_str(), 45);
     self_msg.timestamp = now_time;
     self_msg.join_time = now_time; // Set join_time once at startup
-    self_msg.orchestrator = false;
+    strncpy(self_msg.ipv6, lan.get_address().c_str(), 45);
     self_msg.zero_ref = {40.7128, -74.0060, 0.0};
+    self_msg.orchestrator = false;
     self_msg.capability_index = 64;
 
     Communication self_comm_msg = {};
@@ -91,10 +101,8 @@ int main(int argc, char *argv[]) {
 
     Agent participant(robot_name, &lan, self_msg, self_comm_msg);
 
-    std::cout << "Robot started. Waiting for discovery..." << std::endl;
-
     auto start_time = std::chrono::steady_clock::now();
-    while (!should_exit && std::chrono::steady_clock::now() - start_time < std::chrono::seconds(60)) {
+    while (!should_exit) {
         std::this_thread::sleep_for(std::chrono::seconds(5));
 
         std::cout << "\n=== Current Network Status ===" << std::endl;
@@ -105,12 +113,6 @@ int main(int argc, char *argv[]) {
         for (const auto &[ipv6, agent] : participant.all_communication_) {
             std::cout << "    - " << agent.to_string() << std::endl;
         }
-    }
-
-    if (!should_exit) {
-        std::cout << "\nDiscovery complete! Press Enter to shutdown..." << std::endl;
-        std::string input;
-        std::getline(std::cin, input);
     }
 
     std::cout << "Shutting down..." << std::endl;
