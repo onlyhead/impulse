@@ -64,6 +64,15 @@ class LanInterface : public NetworkInterface {
     inline std::string generate_robot_ipv6(int robot_id) {
         char ipv6_buf[INET6_ADDRSTRLEN];
         snprintf(ipv6_buf, sizeof(ipv6_buf), "fd00:dead:beef::%04x", robot_id);
+        
+        // Normalize the address using inet_pton/inet_ntop to ensure consistent format
+        struct sockaddr_in6 sa;
+        char normalized[INET6_ADDRSTRLEN];
+        if (inet_pton(AF_INET6, ipv6_buf, &sa.sin6_addr) == 1) {
+            if (inet_ntop(AF_INET6, &sa.sin6_addr, normalized, INET6_ADDRSTRLEN)) {
+                return std::string(normalized);
+            }
+        }
         return std::string(ipv6_buf);
     }
 

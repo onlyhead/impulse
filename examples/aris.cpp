@@ -26,22 +26,20 @@ class Agent {
 
     inline Agent(const std::string &name, NetworkInterface *network_interface, Discovery &discovery_msg,
                  Communication &communication_msg)
-        : name_(name), address_(network_interface->get_address()),
-          discovery_(name, network_interface, true, std::chrono::milliseconds(1000)),
-          communication_(name, network_interface, true, std::chrono::milliseconds(1000)),
-          position_(name, network_interface, false, std::chrono::milliseconds(1000)) {
+        : name_(name), address_(network_interface->get_address()), discovery_(name, network_interface),
+          communication_(name, network_interface), position_(name, network_interface) {
 
-        all_discoveries_[network_interface->get_address()] = discovery_msg;
+        all_discoveries_[address_] = discovery_msg;
         discovery_.set_message_handler([this](const Discovery &msg, const std::string address, const uint16_t) {
             all_discoveries_[address] = msg;
         });
-        discovery_.set_broadcast_message(discovery_msg);
+        discovery_.set_broadcast(discovery_msg);
 
-        all_communication_[network_interface->get_address()] = communication_msg;
+        all_communication_[address_] = communication_msg;
         communication_.set_message_handler([this](const Communication &msg, const std::string address, const uint16_t) {
             all_communication_[address] = msg;
         });
-        communication_.set_broadcast_message(communication_msg);
+        communication_.set_broadcast(communication_msg);
 
         position_.set_message_handler(
             [this](const Position &msg, const std::string address, const uint16_t) { all_position_[address] = msg; });
@@ -53,21 +51,13 @@ class Agent {
                 communication_.handle_incoming_message(message, from_addr, from_port);
                 position_.handle_incoming_message(message, from_addr, from_port);
             });
-
-        discovery_.start();
-        communication_.start();
-        position_.start();
     }
 
-    inline ~Agent() {
-        discovery_.stop();
-        communication_.stop();
-        position_.stop();
-    }
+    inline ~Agent() {}
 
     inline void update_position(const Position &position) {
         all_position_[address_] = position;
-        position_.send(position);
+        position_.send_message(position);
     }
 };
 
