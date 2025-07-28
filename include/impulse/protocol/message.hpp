@@ -21,7 +21,6 @@ class Message {
 struct __attribute__((packed)) Discovery : public Message {
     uint64_t timestamp;
     uint64_t join_time;
-    char ipv6[46];
     concord::Datum zero_ref;
     bool orchestrator;
     int32_t capability_index;
@@ -34,7 +33,7 @@ struct __attribute__((packed)) Discovery : public Message {
         auto tm_val = *std::localtime(&time_t_val);
         char time_str[9];
         std::strftime(time_str, sizeof(time_str), "%H:%M:%S", &tm_val);
-        return "AgentMessage{ipv6=" + std::string(ipv6) + ", capability=" + std::to_string(capability_index) +
+        return "AgentMessage{capability=" + std::to_string(capability_index) +
                ", orchestrator=" + (orchestrator ? "true" : "false") + ", joined=" + std::string(time_str) + "}";
     }
     inline void set_timestamp(uint64_t timestamp) override { this->timestamp = timestamp; }
@@ -42,7 +41,6 @@ struct __attribute__((packed)) Discovery : public Message {
 
 struct __attribute__((packed)) Position : public Message {
     uint64_t timestamp;
-    char ipv6[46];
     concord::Pose pose;
 
     inline void serialize(char *buffer) const override { memcpy(buffer, this, sizeof(Position)); }
@@ -74,7 +72,6 @@ enum struct SerializationType : uint8_t {
 
 struct __attribute__((packed)) Communication : public Message {
     uint64_t timestamp;
-    char ipv6[46];
     TransportType transport_type;
     SerializationType serialization_type;
 

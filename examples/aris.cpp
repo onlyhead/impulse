@@ -26,17 +26,15 @@ class Agent {
         : name_(name), discovery_(name, network_interface, true, std::chrono::milliseconds(1000)),
           communication_(name, network_interface, true, std::chrono::milliseconds(1000)) {
 
-        all_discoveries_[discovery_msg.ipv6] = discovery_msg;
-        discovery_.set_message_handler([this](const Discovery &msg, const std::string, const uint16_t) {
-            std::string agent_ipv6(msg.ipv6);
-            all_discoveries_[agent_ipv6] = msg;
+        all_discoveries_[network_interface->get_address()] = discovery_msg;
+        discovery_.set_message_handler([this](const Discovery &msg, const std::string address, const uint16_t) {
+            all_discoveries_[address] = msg;
         });
         discovery_.set_broadcast_message(discovery_msg);
 
-        all_communication_[communication_msg.ipv6] = communication_msg;
-        communication_.set_message_handler([this](const Communication &msg, const std::string, const uint16_t) {
-            std::string agent_ipv6(msg.ipv6);
-            all_communication_[agent_ipv6] = msg;
+        all_communication_[network_interface->get_address()] = communication_msg;
+        communication_.set_message_handler([this](const Communication &msg, const std::string address, const uint16_t) {
+            all_communication_[address] = msg;
         });
         communication_.set_broadcast_message(communication_msg);
 
@@ -89,14 +87,12 @@ int main(int argc, char *argv[]) {
     Discovery self_msg = {};
     self_msg.timestamp = now_time;
     self_msg.join_time = now_time; // Set join_time once at startup
-    strncpy(self_msg.ipv6, lan.get_address().c_str(), 45);
     self_msg.zero_ref = {40.7128, -74.0060, 0.0};
     self_msg.orchestrator = false;
     self_msg.capability_index = 64;
 
     Communication self_comm_msg = {};
     self_comm_msg.timestamp = now_time;
-    strncpy(self_comm_msg.ipv6, lan.get_address().c_str(), 45);
     self_comm_msg.transport_type = TransportType::dds;
     self_comm_msg.serialization_type = SerializationType::ros;
 
@@ -108,11 +104,11 @@ int main(int argc, char *argv[]) {
 
         std::cout << "\n=== Current Network Status ===" << std::endl;
         for (const auto &[ipv6, agent] : participant.all_discoveries_) {
-            std::cout << "    - " << agent.to_string() << std::endl;
+            std::cout << "    - " << ipv6 << ": " << agent.to_string() << std::endl;
         }
         std::cout << "\n=== Current Communication Status ===" << std::endl;
         for (const auto &[ipv6, agent] : participant.all_communication_) {
-            std::cout << "    - " << agent.to_string() << std::endl;
+            std::cout << "    - " << ipv6 << ": " << agent.to_string() << std::endl;
         }
     }
 
