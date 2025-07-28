@@ -28,15 +28,15 @@ template <typename MessageT = Message> class Transport {
     bool has_broadcast_message_;
 
     // Generic message handler function
-    std::function<void(const MessageT &, const std::string &)> message_handler_;
+    std::function<void(const MessageT &, const std::string &, uint16_t)> message_handler_;
 
     void message_loop();
     void send_message(const MessageT &msg);
-    void handle_incoming_message(const std::string &message, const std::string &from_addr);
+    void handle_incoming_message(const std::string &message, const std::string &from_addr, uint16_t from_port);
 
   public:
-    Transport(const std::string &name, NetworkInterface *network_interface,
-              bool continuous = false, std::chrono::milliseconds interval = std::chrono::milliseconds(1000));
+    Transport(const std::string &name, NetworkInterface *network_interface, bool continuous = false,
+              std::chrono::milliseconds interval = std::chrono::milliseconds(1000));
     ~Transport();
 
     bool start();
@@ -44,7 +44,7 @@ template <typename MessageT = Message> class Transport {
     std::string get_address() const;
 
     // Set custom message handler
-    void set_message_handler(std::function<void(const MessageT &, const std::string &)> handler);
+    void set_message_handler(std::function<void(const MessageT &, const std::string &, uint16_t)> handler);
 
     // Send a message
     void send(const MessageT &message);
@@ -54,10 +54,10 @@ template <typename MessageT = Message> class Transport {
 };
 
 template <typename MessageT>
-inline Transport<MessageT>::Transport(const std::string &name, NetworkInterface *network_interface,
-                                      bool continuous, std::chrono::milliseconds interval)
-    : name_(name), network_interface_(network_interface), running_(false),
-      continuous_(continuous), broadcast_interval_(interval), has_broadcast_message_(false) {
+inline Transport<MessageT>::Transport(const std::string &name, NetworkInterface *network_interface, bool continuous,
+                                      std::chrono::milliseconds interval)
+    : name_(name), network_interface_(network_interface), running_(false), continuous_(continuous),
+      broadcast_interval_(interval), has_broadcast_message_(false) {
 
     join_time_ =
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
@@ -72,7 +72,7 @@ template <typename MessageT> inline bool Transport<MessageT>::start() {
     // Register callback to receive messages from network interface
     network_interface_->set_message_callback(
         [this](const std::string &message, const std::string &from_addr, uint16_t from_port) {
-            this->handle_incoming_message(message, from_addr);
+            this->handle_incoming_message(message, from_addr, from_port);
         });
 
     running_ = true;
@@ -118,23 +118,22 @@ template <typename MessageT> inline void Transport<MessageT>::send(const Message
 
 template <typename MessageT>
 inline void
-Transport<MessageT>::set_message_handler(std::function<void(const MessageT &, const std::string &)> handler) {
+Transport<MessageT>::set_message_handler(std::function<void(const MessageT &, const std::string &, uint16_t)> handler) {
     message_handler_ = handler;
 }
 
 template <typename MessageT>
-inline void Transport<MessageT>::handle_incoming_message(const std::string &message, const std::string &from_addr) {
+inline void Transport<MessageT>::handle_incoming_message(const std::string &message, const std::string &from_addr, uint16_t from_port) {
     if (message.size() == sizeof(MessageT)) {
         MessageT msg;
         msg.deserialize(message.c_str());
 
         // Call custom handler if set
         if (message_handler_) {
-            message_handler_(msg, from_addr);
+            message_handler_(msg, from_addr, from_port);
         }
     }
 }
-
 
 template <typename MessageT> inline std::string Transport<MessageT>::get_address() const {
     return network_interface_->get_address();

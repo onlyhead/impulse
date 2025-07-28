@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <ctime>
 #include <string>
 
 class Message {
@@ -29,8 +30,12 @@ struct Discovery : public Message {
     inline void deserialize(const char *buffer) override { memcpy(this, buffer, sizeof(Discovery)); }
     inline uint32_t get_size() const override { return sizeof(Discovery); }
     inline std::string to_string() const override {
+        auto time_t_val = static_cast<time_t>(join_time / 1000);
+        auto tm_val = *std::localtime(&time_t_val);
+        char time_str[9];
+        std::strftime(time_str, sizeof(time_str), "%H:%M:%S", &tm_val);
         return "AgentMessage{ipv6=" + std::string(ipv6) + ", capability=" + std::to_string(capability_index) +
-               ", orchestrator=" + (orchestrator ? "true" : "false") + "}";
+               ", orchestrator=" + (orchestrator ? "true" : "false") + ", joined=" + std::string(time_str) + "}";
     }
     inline void set_timestamp(uint64_t timestamp) override { this->timestamp = timestamp; }
 };
