@@ -14,17 +14,22 @@
 class Agent {
   private:
     std::string name_;
+    std::string address_;
     Transport<Discovery> discovery_;
     Transport<Communication> communication_;
+    Transport<Position> position_;
 
   public:
     std::map<std::string, Discovery> all_discoveries_;
     std::map<std::string, Communication> all_communication_;
+    std::map<std::string, Position> all_position_;
 
     inline Agent(const std::string &name, NetworkInterface *network_interface, Discovery &discovery_msg,
                  Communication &communication_msg)
-        : name_(name), discovery_(name, network_interface, true, std::chrono::milliseconds(1000)),
-          communication_(name, network_interface, true, std::chrono::milliseconds(1000)) {
+        : name_(name), address_(network_interface->get_address()),
+          discovery_(name, network_interface, true, std::chrono::milliseconds(1000)),
+          communication_(name, network_interface, true, std::chrono::milliseconds(1000)),
+          position_(name, network_interface, false, std::chrono::milliseconds(1000)) {
 
         all_discoveries_[network_interface->get_address()] = discovery_msg;
         discovery_.set_message_handler([this](const Discovery &msg, const std::string address, const uint16_t) {
@@ -38,20 +43,31 @@ class Agent {
         });
         communication_.set_broadcast_message(communication_msg);
 
+        position_.set_message_handler(
+            [this](const Position &msg, const std::string address, const uint16_t) { all_position_[address] = msg; });
+
         // Set up unified message routing
         network_interface->set_message_callback(
             [this](const std::string &message, const std::string &from_addr, uint16_t from_port) {
                 discovery_.handle_incoming_message(message, from_addr, from_port);
                 communication_.handle_incoming_message(message, from_addr, from_port);
+                position_.handle_incoming_message(message, from_addr, from_port);
             });
 
         discovery_.start();
         communication_.start();
+        position_.start();
     }
 
     inline ~Agent() {
         discovery_.stop();
         communication_.stop();
+        position_.stop();
+    }
+
+    inline void update_position(const Position &position) {
+        all_position_[address_] = position;
+        position_.send(position);
     }
 };
 
@@ -63,6 +79,7 @@ void signal_handler(int signal) {
 }
 
 int main(int argc, char *argv[]) {
+    int count = 0;
     if (argc != 2) {
         std::cerr << "Usage: " << argv[0] << " <robot_name>" << std::endl;
         std::cerr << "Example: " << argv[0] << " Tractor-Alpha" << std::endl;
@@ -98,8 +115,14 @@ int main(int argc, char *argv[]) {
 
     Agent participant(robot_name, &lan, self_msg, self_comm_msg);
 
+    Position position_msg = {};
+    position_msg.timestamp = now_time;
+    position_msg.pose.point = {40.7128, -74.0060, 0.0};
+    participant.update_position(position_msg);
+
     auto start_time = std::chrono::steady_clock::now();
     while (!should_exit) {
+        count++;
         std::this_thread::sleep_for(std::chrono::seconds(5));
 
         std::cout << "\n=== Current Network Status ===" << std::endl;
@@ -110,6 +133,13 @@ int main(int argc, char *argv[]) {
         for (const auto &[ipv6, agent] : participant.all_communication_) {
             std::cout << "    - " << ipv6 << ": " << agent.to_string() << std::endl;
         }
+        std::cout << "\n=== Current Position Status ===" << std::endl;
+        for (const auto &[ipv6, agent] : participant.all_position_) {
+            std::cout << "    - " << ipv6 << ": " << agent.to_string() << std::endl;
+        }
+
+        position_msg.pose.point = {40.7128 + 0.1 * count, -74.0060 + 0.1 * count, 0.0};
+        participant.update_position(position_msg);
     }
 
     std::cout << "Shutting down..." << std::endl;
