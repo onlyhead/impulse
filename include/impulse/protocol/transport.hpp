@@ -17,7 +17,6 @@
 template <typename MessageT = Message> class Transport {
   private:
     std::string name_;
-    int32_t capability_index_;
     uint64_t join_time_;
     NetworkInterface *network_interface_;
 
@@ -36,13 +35,12 @@ template <typename MessageT = Message> class Transport {
     void handle_incoming_message(const std::string &message, const std::string &from_addr);
 
   public:
-    Transport(const std::string &name, NetworkInterface *network_interface, int32_t capability = 75,
+    Transport(const std::string &name, NetworkInterface *network_interface,
               bool continuous = false, std::chrono::milliseconds interval = std::chrono::milliseconds(1000));
     ~Transport();
 
     bool start();
     void stop();
-    int32_t get_capability() const;
     std::string get_address() const;
 
     // Set custom message handler
@@ -56,9 +54,9 @@ template <typename MessageT = Message> class Transport {
 };
 
 template <typename MessageT>
-inline Transport<MessageT>::Transport(const std::string &name, NetworkInterface *network_interface, int32_t capability,
+inline Transport<MessageT>::Transport(const std::string &name, NetworkInterface *network_interface,
                                       bool continuous, std::chrono::milliseconds interval)
-    : name_(name), capability_index_(capability), network_interface_(network_interface), running_(false),
+    : name_(name), network_interface_(network_interface), running_(false),
       continuous_(continuous), broadcast_interval_(interval), has_broadcast_message_(false) {
 
     join_time_ =
@@ -137,7 +135,6 @@ inline void Transport<MessageT>::handle_incoming_message(const std::string &mess
     }
 }
 
-template <typename MessageT> inline int32_t Transport<MessageT>::get_capability() const { return capability_index_; }
 
 template <typename MessageT> inline std::string Transport<MessageT>::get_address() const {
     return network_interface_->get_address();

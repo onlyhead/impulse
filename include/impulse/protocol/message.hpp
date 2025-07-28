@@ -37,6 +37,7 @@ struct Discovery : public Message {
 
 struct Position : public Message {
     uint64_t timestamp;
+    char ipv6[46];
     concord::Pose pose;
 
     inline void serialize(char *buffer) const override { memcpy(buffer, this, sizeof(Position)); }
@@ -47,6 +48,37 @@ struct Position : public Message {
                std::to_string(pose.point.z) + "), angle=(roll=" + std::to_string(pose.angle.roll) +
                ",pitch=" + std::to_string(pose.angle.pitch) + ",yaw=" + std::to_string(pose.angle.yaw) +
                ")}, timestamp=" + std::to_string(timestamp) + "}";
+    }
+    inline void set_timestamp(uint64_t timestamp) override { this->timestamp = timestamp; }
+};
+
+enum struct TransportType : uint8_t {
+    dds = 0,
+    zenoh = 1,
+    zeromq = 2,
+    mqtt = 3,
+};
+
+enum struct SerializationType : uint8_t {
+    ros = 0,
+    capnproto = 0,
+    flatbuffers = 1,
+    json = 2,
+    protobuf = 3,
+};
+
+struct Communication : public Message {
+    uint64_t timestamp;
+    char ipv6[46];
+    TransportType transport_type;
+    SerializationType serialization_type;
+
+    inline void serialize(char *buffer) const override { memcpy(buffer, this, sizeof(Communication)); }
+    inline void deserialize(const char *buffer) override { memcpy(this, buffer, sizeof(Communication)); }
+    inline uint32_t get_size() const override { return sizeof(Communication); }
+    inline std::string to_string() const override {
+        return "Communication{transport_type=" + std::to_string(static_cast<int>(transport_type)) +
+               ", serialization_type=" + std::to_string(static_cast<int>(serialization_type)) + "}";
     }
     inline void set_timestamp(uint64_t timestamp) override { this->timestamp = timestamp; }
 };
