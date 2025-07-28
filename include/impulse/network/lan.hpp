@@ -93,7 +93,7 @@ namespace impulse {
             std::string cmd = "ip -6 addr add " + address_ + "/64 dev " + interface_name_ + " 2>/dev/null";
             if (system(cmd.c_str()) != 0) {
                 std::cerr << "Failed to add IPv6 address (try with sudo)" << std::endl;
-                return false;  // Return false when IPv6 setup fails
+                return false; // Return false when IPv6 setup fails
             } else {
                 std::cout << "Added IPv6 address " << address_ << " to " << interface_name_ << std::endl;
             }
@@ -137,7 +137,66 @@ namespace impulse {
         }
 
       public:
-        inline LanInterface(const std::string &interface = "", uint16_t port = 7447, const std::string &ipv6_addr = "")
+        inline std::string request_dhcpv6_address() {
+            int sock = socket(AF_INET6, SOCK_DGRAM, 0);
+            if (sock < 0) return generate_robot_ipv6(rand());
+
+            // Bind to DHCPv6 client port
+            struct sockaddr_in6 client_addr = {};
+            client_addr.sin6_family = AF_INET6;
+            client_addr.sin6_port = htons(546); // DHCPv6 client port
+            if (bind(sock, (struct sockaddr *)&client_addr, sizeof(client_addr)) < 0) {
+                close(sock);
+                return generate_robot_ipv6(rand());
+            }
+
+            // Create DHCPv6 Solicit message
+            uint8_t message[1024] = {};
+            message[0] = 1;             // SOLICIT
+            message[1] = rand() & 0xFF; // Transaction ID
+            message[2] = rand() & 0xFF;
+            message[3] = rand() & 0xFF;
+
+            // Add IAID (Interface Association ID) - unique per robot
+            uint32_t iaid = rand();
+            memcpy(message + 4, &iaid, 4);
+
+            // Send to DHCPv6 server multicast
+            struct sockaddr_in6 server_addr = {};
+            server_addr.sin6_family = AF_INET6;
+            server_addr.sin6_port = htons(547);                       // DHCPv6 server port
+            inet_pton(AF_INET6, "ff02::1:2", &server_addr.sin6_addr); // All DHCP servers
+
+            sendto(sock, message, 8, 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
+
+            // Receive ADVERTISE response with timeout
+            fd_set readfds;
+            struct timeval timeout = {2, 0}; // 2 second timeout
+            FD_ZERO(&readfds);
+            FD_SET(sock, &readfds);
+
+            if (select(sock + 1, &readfds, nullptr, nullptr, &timeout) > 0) {
+                uint8_t response[1024];
+                socklen_t addr_len = sizeof(server_addr);
+                ssize_t len = recvfrom(sock, response, sizeof(response), 0, (struct sockaddr *)&server_addr, &addr_len);
+
+                if (len > 24) {
+                    // Extract IPv6 address from IA_NA option (simplified)
+                    struct in6_addr *assigned_addr = (struct in6_addr *)(response + 16);
+                    char addr_str[INET6_ADDRSTRLEN];
+                    inet_ntop(AF_INET6, assigned_addr, addr_str, INET6_ADDRSTRLEN);
+
+                    close(sock);
+                    return std::string(addr_str);
+                }
+            }
+
+            close(sock);
+            return generate_robot_ipv6(rand()); // Fallback to ULA
+        }
+
+        inline LanInterface(const std::string &interface = "", uint16_t port = 7447, const std::string &ipv6_addr = "",
+                            bool use_dhcp = false)
             : socket_fd_(-1), owns_interface_(false) {
 
             port_ = port;
@@ -151,14 +210,16 @@ namespace impulse {
                 owns_interface_ = (if_nametoindex(interface.c_str()) == 0);
             }
 
-            if (ipv6_addr.empty()) {
+            if (!ipv6_addr.empty()) {
+                address_ = ipv6_addr;
+            } else if (use_dhcp) {
+                address_ = request_dhcpv6_address(); // Get unique address from router
+            } else {
                 std::random_device rd;
                 std::mt19937 gen(rd());
                 std::uniform_int_distribution<> dis(1, 65535);
                 int robot_id = dis(gen);
-                address_ = generate_robot_ipv6(robot_id);
-            } else {
-                address_ = ipv6_addr;
+                address_ = generate_robot_ipv6(robot_id); // Default: ULA
             }
         }
 
