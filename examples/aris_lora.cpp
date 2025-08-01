@@ -22,9 +22,6 @@ class Agent {
     impulse::Transport<impulse::Position> position_;
     impulse::Transport<impulse::Position> lora_position_;
 
-    impulse::NetworkInterface *lora_ptr = nullptr;
-    impulse::NetworkInterface *lan_ptr = nullptr;
-
   public:
     std::map<std::string, impulse::Discovery> all_discoveries_;
     std::map<std::string, impulse::Communication> all_communication_;
@@ -35,7 +32,7 @@ class Agent {
                  impulse::Communication &communication_msg)
         : name_(name), address_(network_interface->get_address()), discovery_(name, network_interface),
           communication_(name, network_interface), position_(name, network_interface),
-          lora_position_(name, lora_interface), lan_ptr(network_interface), lora_ptr(lora_interface) {
+          lora_position_(name, lora_interface) {
 
         all_discoveries_[address_] = discovery_msg;
         discovery_.set_message_handler([this](const impulse::Discovery &msg, const std::string address,
@@ -51,7 +48,7 @@ class Agent {
             all_position_[address] = msg;
         });
 
-        lan_ptr->set_message_callback(
+        network_interface->set_message_callback(
             [this](const std::string &message, const std::string &from_addr, uint16_t from_port) {
                 discovery_.handle_incoming_message(message, from_addr, from_port);
                 communication_.handle_incoming_message(message, from_addr, from_port);
@@ -60,7 +57,7 @@ class Agent {
 
         lora_position_.set_message_handler([this](const impulse::Position &msg, const std::string address,
                                                   const uint16_t) { all_position_[address] = msg; });
-        lora_ptr->set_message_callback(
+        lora_interface->set_message_callback(
             [this](const std::string &message, const std::string &from_addr, uint16_t /* from_port */) {
                 lora_position_.handle_incoming_message(message, from_addr, 0);
             });
@@ -68,7 +65,7 @@ class Agent {
 
     inline ~Agent() {}
 
-    inline void update_position(const impulse::Position &position) {
+    inline void update_position(const impulse::Position &position, impulse::NetworkInterface *lora_ptr) {
         all_position_[address_] = position;
         position_.send_message(position);
         if (lora_ptr->is_connected()) {
@@ -133,7 +130,7 @@ int main(int argc, char *argv[]) {
     impulse::Position position_msg = {};
     position_msg.timestamp = now_time;
     position_msg.pose.point = {40.7128, -74.0060, 0.0};
-    participant.update_position(position_msg);
+    participant.update_position(position_msg, &lora);
 
     auto start_time = std::chrono::steady_clock::now();
     while (!should_exit) {
@@ -154,7 +151,7 @@ int main(int argc, char *argv[]) {
         }
 
         position_msg.pose.point = {40.7128 + 0.1 * count, -74.0060 + 0.1 * count, 0.0};
-        participant.update_position(position_msg);
+        participant.update_position(position_msg, &lora);
     }
 
     std::cout << "Shutting down..." << std::endl;
