@@ -437,6 +437,8 @@ namespace impulse {
             message_callback_ = callback;
         }
 
+        inline bool is_connected() const override { return running_ && socket_fd_ >= 0; }
+
         // LAN-specific methods
         inline const std::string &get_ipv6() const { return address_; }
     };

@@ -15,6 +15,8 @@ namespace impulse {
         virtual bool start() = 0;
         virtual void stop() = 0;
 
+        virtual bool is_connected() const = 0;
+
         virtual void send_message(const std::string &dest_addr, uint16_t dest_port, const std::string &msg) = 0;
         virtual void multicast_message(const std::string &msg) = 0;
         virtual void multicast_to_group(const std::vector<std::string> &dest_addrs, uint16_t dest_port,
