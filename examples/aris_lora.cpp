@@ -22,6 +22,9 @@ class Agent {
     impulse::Transport<impulse::Position> position_;
     impulse::Transport<impulse::Position> lora_position_;
 
+    impulse::NetworkInterface *lora_ptr = nullptr;
+    impulse::NetworkInterface *lan_ptr = nullptr;
+
   public:
     std::map<std::string, impulse::Discovery> all_discoveries_;
     std::map<std::string, impulse::Communication> all_communication_;
@@ -32,7 +35,7 @@ class Agent {
                  impulse::Communication &communication_msg)
         : name_(name), address_(network_interface->get_address()), discovery_(name, network_interface),
           communication_(name, network_interface), position_(name, network_interface),
-          lora_position_(name, lora_interface) {
+          lora_position_(name, lora_interface), lan_ptr(network_interface), lora_ptr(lora_interface) {
 
         all_discoveries_[address_] = discovery_msg;
         discovery_.set_message_handler([this](const impulse::Discovery &msg, const std::string address,
@@ -48,7 +51,7 @@ class Agent {
             all_position_[address] = msg;
         });
 
-        network_interface->set_message_callback(
+        lan_ptr->set_message_callback(
             [this](const std::string &message, const std::string &from_addr, uint16_t from_port) {
                 discovery_.handle_incoming_message(message, from_addr, from_port);
                 communication_.handle_incoming_message(message, from_addr, from_port);
@@ -57,7 +60,7 @@ class Agent {
 
         lora_position_.set_message_handler([this](const impulse::Position &msg, const std::string address,
                                                   const uint16_t) { all_position_[address] = msg; });
-        lora_interface->set_message_callback(
+        lora_ptr->set_message_callback(
             [this](const std::string &message, const std::string &from_addr, uint16_t /* from_port */) {
                 lora_position_.handle_incoming_message(message, from_addr, 0);
             });
@@ -68,7 +71,9 @@ class Agent {
     inline void update_position(const impulse::Position &position) {
         all_position_[address_] = position;
         position_.send_message(position);
-        lora_position_.send_message(position);
+        if (lora_ptr->is_connected()) {
+            lora_position_.send_message(position);
+        }
     }
 };
 
