@@ -7,9 +7,10 @@ A header-only C++ library for building distributed systems with automatic agent 
 - **Generic Transport Layer**: Template-based transport supporting any message type
 - **Continuous Broadcasting**: Automatic periodic message transmission in background threads
 - **Agent Discovery**: Built-in peer discovery with join time tracking
-- **Network Interface Abstraction**: Support for LAN, LoRa, and other network types
+- **Network Interface Abstraction**: Support for LAN and LoRa (via melodi firmware) network types
 - **Thread-Safe Operations**: Concurrent message sending and receiving
 - **Header-Only**: Easy integration, no separate compilation required
+- **LoRa Mesh Support**: IPv6-based mesh networking over LoRa with automatic fragmentation and hop-based forwarding
 
 ## Quick Start
 
@@ -38,13 +39,17 @@ struct MyDiscoveryMessage : public Message {
 ### 2. Create Network Interface
 
 ```cpp
-#include "impulse/network/interface.hpp"
+#include "impulse/network/lan.hpp"
+#include "impulse/network/lora.hpp"
 
 // Use LAN interface
-auto lan_interface = std::make_unique<LanInterface>();
+auto lan_interface = std::make_unique<LanInterface>("eth0");
 
-// Future: LoRa interface
-// auto lora_interface = std::make_unique<LoRaInterface>(frequency, power);
+// Use LoRa interface (requires melodi firmware device)
+auto lora_interface = std::make_unique<LoRaInterface>(
+    "/dev/ttyACM0",           // Serial port
+    lan_interface->get_address()  // IPv6 address (same as LAN)
+);
 ```
 
 ### 3. Set Up Continuous Transport
@@ -186,18 +191,27 @@ int main() {
 auto lan = std::make_unique<LanInterface>();
 ```
 
-#### Future: LoRa Interface
+#### LoRa Interface
 ```cpp
-// Hypothetical LoRa interface
+// LoRa interface via serial connection to melodi firmware device
 auto lora = std::make_unique<LoRaInterface>(
-    frequency_mhz,     // e.g., 915.0 for North America
-    tx_power_dbm,      // e.g., 14
-    bandwidth_khz,     // e.g., 125
-    spreading_factor,  // e.g., 7
-    coding_rate        // e.g., 5
+    "/dev/ttyACM0",         // Serial port connected to LoRa device
+    "fd00:dead:beef::1"     // IPv6 address (should match LAN interface)
 );
 
-// Usage would be identical
+// Start the interface
+if (!lora->start()) {
+    std::cerr << "Failed to start LoRa interface" << std::endl;
+    return 1;
+}
+
+// Configure LoRa parameters (optional)
+lora->set_tx_power(20);                    // TX power in dBm
+lora->set_frequency(868000000);            // Frequency in Hz (868 MHz for Europe)
+lora->set_hop_limit(3);                    // Mesh hop limit (1-15)
+lora->set_default_repeat_count(2);         // Repeat each fragment (1-255)
+
+// Usage is identical to LAN interface
 Transport<MyMessage> transport("device", lora.get(), 100, true, std::chrono::seconds(10));
 ```
 
@@ -238,6 +252,7 @@ This is a header-only library. Simply include the headers:
 ### Dependencies
 - **concord**: Geographic and networking utilities
 - **C++20**: Required for template features and chrono utilities
+- **melodi firmware**: Required for LoRa interface (see [melodi-net/melodi](https://github.com/melodi-net/melodi))
 
 ### CMake Integration
 ```cmake
@@ -250,7 +265,49 @@ target_link_libraries(your_target impulse::impulse)
 See `examples/` directory for complete implementations:
 - `examples/aris.cpp` - Basic agent discovery
 - `examples/lan_example.cpp` - LAN network demonstration
+- `examples/lora_example.cpp` - LoRa mesh network with multi-agent discovery
+- `examples/lora_simple_test.cpp` - Simple LoRa send/receive test
+- `examples/aris_lora.cpp` - ARIS robot with both LAN and LoRa interfaces
+
+## LoRa Mesh Network Setup
+
+The LoRa interface requires a device running the [melodi firmware](https://github.com/melodi-net/melodi), which implements IPv6-based mesh networking over LoRa radio.
+
+### Hardware Requirements
+- LoRa radio module (RFM95, SX1276, etc.) connected via USB serial
+- Device appears as `/dev/ttyACM*` or `/dev/ttyUSB*`
+- Check with `ls -la /dev/ttyACM*` or `dmesg` after connecting
+
+### LoRa Interface Usage
+
+```cpp
+// Basic setup
+LoRaInterface lora("/dev/ttyACM0", "fd00:dead:beef::1");
+if (!lora.start()) {
+    std::cerr << "Failed to start LoRa" << std::endl;
+    return 1;
+}
+
+// Send message with custom repeat count
+lora.send_message_with_repeat("fd00:dead:beef::2", "Hello", 3);
+
+// Broadcast to all nodes
+lora.multicast_message("Network announcement");
+
+// Configure parameters
+lora.set_tx_power(20);          // 0-23 dBm
+lora.set_frequency(868000000);  // Hz (868 MHz EU, 915 MHz US)
+lora.set_hop_limit(5);          // 1-15 hops
+lora.set_default_repeat_count(2); // 1-255 repeats per fragment
+```
+
+### Key Differences from LAN
+- **Fragmentation**: Messages are split into 128-byte chunks
+- **Mesh Routing**: Packets hop through intermediate nodes
+- **Repeat Count**: Each fragment can be repeated for reliability
+- **No Ports**: LoRa doesn't use port numbers (always 0)
+- **Binary Protocol**: Uses efficient binary serialization
 
 ## License
 
-[Your License Here]
+MIT License

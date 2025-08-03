@@ -541,10 +541,7 @@ namespace impulse {
             command_data.insert(command_data.end(), msg.begin(), msg.end());
 
             // Send command
-            if (send_command(CMD_SEND_MESSAGE, command_data)) {
-                std::cout << "LoRa message sent to " << dest_addr << " (repeat=" << (int)repeat_count << "): " 
-                          << msg.substr(0, 50) << (msg.length() > 50 ? "..." : "") << std::endl;
-            } else {
+            if (!send_command(CMD_SEND_MESSAGE, command_data)) {
                 std::cerr << "Failed to send LoRa message to " << dest_addr << std::endl;
             }
         }

@@ -17,9 +17,9 @@ class Agent {
   private:
     std::string name_;
     std::string address_;
-    impulse::Transport<impulse::Discovery> discovery_;
-    impulse::Transport<impulse::Communication> communication_;
-    impulse::Transport<impulse::Position> position_;
+    // impulse::Transport<impulse::Discovery> discovery_;
+    // impulse::Transport<impulse::Communication> communication_;
+    // impulse::Transport<impulse::Position> position_;
     impulse::Transport<impulse::Position> lora_position_;
 
   public:
@@ -30,10 +30,11 @@ class Agent {
     inline Agent(const std::string &name, impulse::NetworkInterface *network_interface,
                  impulse::NetworkInterface *lora_interface, impulse::Discovery &discovery_msg,
                  impulse::Communication &communication_msg)
-        : name_(name), address_(network_interface->get_address()), discovery_(name, network_interface),
-          communication_(name, network_interface), position_(name, network_interface),
-          lora_position_(name, lora_interface) {
-
+        : name_(name), address_(network_interface->get_address()), lora_position_(name, lora_interface) {
+        // : name_(name), address_(network_interface->get_address()), discovery_(name, network_interface),
+        // communication_(name, network_interface), position_(name, network_interface),
+        // lora_position_(name, lora_interface) {
+        //
         // all_discoveries_[address_] = discovery_msg;
         // discovery_.set_message_handler([this](const impulse::Discovery &msg, const std::string address,
         //                                       const uint16_t) { all_discoveries_[address] = msg; });
@@ -68,7 +69,7 @@ class Agent {
 
     inline void update_position(const impulse::Position &position) {
         all_position_[address_] = position;
-        position_.send_message(position);
+        // position_.send_message(position);
         lora_position_.send_message(position);
     }
 };
