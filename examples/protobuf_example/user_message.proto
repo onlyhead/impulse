@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+package user_messages;
+
+// Example: User's custom robot status message
+message RobotStatus {
+  uint64 timestamp = 1;
+  string robot_id = 2;
+  double battery_level = 3;
+  Position position = 4;
+  repeated string active_missions = 5;
+  OperationalState state = 6;
+}
+
+message Position {
+  double x = 1;
+  double y = 2;
+  double z = 3;
+  double heading = 4;
+}
+
+enum OperationalState {
+  IDLE = 0;
+  MOVING = 1;
+  WORKING = 2;
+  CHARGING = 3;
+  ERROR = 4;
+}
+
+// Another example: Custom sensor data
+message SensorData {
+  uint64 timestamp = 1;
+  string sensor_id = 2;
+  oneof data {
+    TemperatureReading temperature = 10;
+    CameraFrame camera = 11;
+    LidarScan lidar = 12;
+  }
+}
+
+message TemperatureReading {
+  double celsius = 1;
+  double humidity = 2;
+}
+
+message CameraFrame {
+  int32 width = 1;
+  int32 height = 2;
+  bytes image_data = 3;
+  string encoding = 4;
+}
+
+message LidarScan {
+  repeated double ranges = 1;
+  double angle_min = 2;
+  double angle_max = 3;
+  double angle_increment = 4;
+}
+
+// Messages for aris_lora_protobuf example
+message RobotPosition {
+  string robot_name = 1;
+  double x = 2;
+  double y = 3;
+  double z = 4;
+  uint64 timestamp = 5;
+}
+
+message RobotDiscovery {
+  string robot_name = 1;
+  string robot_type = 2;
+  string capabilities = 3;
+  uint64 timestamp = 4;
+}

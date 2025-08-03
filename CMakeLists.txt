@@ -20,6 +20,7 @@ set(params
 string(TOUPPER ${project_name} project_name_upper)
 option(${project_name_upper}_BUILD_EXAMPLES "Build examples" OFF)
 option(${project_name_upper}_ENABLE_TESTS "Enable tests" OFF)
+option(ENABLE_PROTOBUF "Enable Protocol Buffers support" OFF)
 include(FetchContent)
 
 # --------------------------------------------------------------------------------------------------
@@ -28,6 +29,18 @@ set(ext_deps)
 FetchContent_Declare(concord GIT_REPOSITORY https://github.com/onlyhead/concord.git GIT_TAG 2.0.2)
 FetchContent_MakeAvailable(concord)
 list(APPEND ext_deps concord::concord)
+
+# Protobuf support (optional)
+if(ENABLE_PROTOBUF)
+    find_package(Protobuf REQUIRED)
+    find_package(absl REQUIRED)
+    list(APPEND ext_deps
+        ${Protobuf_LIBRARIES}
+    )
+    message(STATUS "Protobuf support enabled (version ${Protobuf_VERSION})")
+else()
+    message(STATUS "Protobuf support disabled. Use -DENABLE_PROTOBUF=ON to enable.")
+endif()
 
 # FetchContent_Declare(capnproto GIT_REPOSITORY https://github.com/capnproto/capnproto.git GIT_TAG v1.2.0)
 # FetchContent_MakeAvailable(capnproto)
@@ -85,6 +98,9 @@ if(${project_name_upper}_BUILD_EXAMPLES)
         target_sources(${exec_name} PRIVATE "${lib_file}")
       endforeach()
     target_link_libraries(${exec_name} ${ext_deps})
+    if(ENABLE_PROTOBUF)
+      target_compile_definitions(${exec_name} PRIVATE ENABLE_PROTOBUF)
+    endif()
     install(TARGETS ${exec_name} DESTINATION bin)
     list(APPEND exec_names ${exec_name})
   endforeach()
@@ -100,6 +116,11 @@ if(${project_name_upper}_BUILD_EXAMPLES)
     ${exec_names}
     DESTINATION lib/${PROJECT_NAME}
   )
+
+  # Build protobuf example if protobuf is enabled
+  if(ENABLE_PROTOBUF)
+    add_subdirectory(examples/protobuf_example)
+  endif()
 endif()
 
 

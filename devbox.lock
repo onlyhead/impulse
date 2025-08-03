@@ -1,6 +1,54 @@
 {
   "lockfile_version": "1",
   "packages": {
+    "abseil-cpp@latest": {
+      "last_modified": "2025-07-13T22:45:35Z",
+      "resolved": "github:NixOS/nixpkgs/a421ac6595024edcfbb1ef950a3712b89161c359#abseil-cpp",
+      "source": "devbox-search",
+      "version": "20250512.1",
+      "systems": {
+        "aarch64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/xinbn2wbn16lq148z7p72n8x0yzmybs0-abseil-cpp-20250512.1",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/xinbn2wbn16lq148z7p72n8x0yzmybs0-abseil-cpp-20250512.1"
+        },
+        "aarch64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/x5bd06iyfnn03snhvjkhh07ziaclkqfb-abseil-cpp-20250512.1",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/x5bd06iyfnn03snhvjkhh07ziaclkqfb-abseil-cpp-20250512.1"
+        },
+        "x86_64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/yljbzkip6f26a09x6gn7b1vfw6y5q18b-abseil-cpp-20250512.1",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/yljbzkip6f26a09x6gn7b1vfw6y5q18b-abseil-cpp-20250512.1"
+        },
+        "x86_64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/xv5jx8wpnbkhh65hvkyrrw041kx6p7x0-abseil-cpp-20250512.1",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/xv5jx8wpnbkhh65hvkyrrw041kx6p7x0-abseil-cpp-20250512.1"
+        }
+      }
+    },
     "arrow-cpp@latest": {
       "last_modified": "2025-07-04T02:32:11Z",
       "resolved": "github:NixOS/nixpkgs/472908faa934435cf781ae8fac77291af3d137d3#arrow-cpp",
@@ -204,6 +252,54 @@
     "github:NixOS/nixpkgs/nixpkgs-unstable": {
       "last_modified": "2025-07-06T07:15:37Z",
       "resolved": "github:NixOS/nixpkgs/ceb24d94c6feaa4e8737a8e2bd3cf71c3a7eaaa0?lastModified=1751786137&narHash=sha256-lIlUKVGCGsh0Q2EA7%2F6xRtKUZjaQ%2Fur8uUyY%2BMynHXQ%3D"
+    },
+    "protobuf@latest": {
+      "last_modified": "2025-07-13T22:45:35Z",
+      "resolved": "github:NixOS/nixpkgs/a421ac6595024edcfbb1ef950a3712b89161c359#protobuf",
+      "source": "devbox-search",
+      "version": "31.1",
+      "systems": {
+        "aarch64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/5gxd2np7fqn9xxzgdhzv2zx5j230p9rg-protobuf-31.1",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/5gxd2np7fqn9xxzgdhzv2zx5j230p9rg-protobuf-31.1"
+        },
+        "aarch64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/mvhwlpfpyy241jw4ansg99q2drkgzw86-protobuf-31.1",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/mvhwlpfpyy241jw4ansg99q2drkgzw86-protobuf-31.1"
+        },
+        "x86_64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/dwr6jmlq4qd9p3abbzk6byyh5h9qyvkw-protobuf-31.1",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/dwr6jmlq4qd9p3abbzk6byyh5h9qyvkw-protobuf-31.1"
+        },
+        "x86_64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/zrkxcyb50mh9vcq31s56cvg3zfl2pn01-protobuf-31.1",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/zrkxcyb50mh9vcq31s56cvg3zfl2pn01-protobuf-31.1"
+        }
+      }
     },
     "stdenv@latest": {
       "last_modified": "2023-02-24T09:01:09Z",
