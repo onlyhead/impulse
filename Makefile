@@ -28,8 +28,15 @@ b: build
 config:
 	@rm -rf $(BUILD_DIR)
 	@mkdir -p $(BUILD_DIR)
-	@echo "cmake -Wno-dev -D$(PROJECT_CAP)_BUILD_EXAMPLES=ON -D$(PROJECT_CAP)_ENABLE_TESTS=ON -DENABLE_PROTOBUF=ON .."
-	@cd $(BUILD_DIR) && cmake -Wno-dev -D$(PROJECT_CAP)_BUILD_EXAMPLES=ON -D$(PROJECT_CAP)_ENABLE_TESTS=ON -DENABLE_PROTOBUF=ON ..
+	@CMAKE_FLAGS="-Wno-dev -D$(PROJECT_CAP)_BUILD_EXAMPLES=ON -D$(PROJECT_CAP)_ENABLE_TESTS=ON"; \
+	if [ "$(PROTOBUF)" = "ON" ]; then \
+		CMAKE_FLAGS="$$CMAKE_FLAGS -DENABLE_PROTOBUF=ON"; \
+		echo "Protobuf enabled"; \
+	else \
+		echo "Protobuf not enabled. Use 'make config PROTOBUF=ON' to enable it."; \
+	fi; \
+	echo "cmake $$CMAKE_FLAGS .."; \
+	cd $(BUILD_DIR) && cmake $$CMAKE_FLAGS ..
 
 c: config
 
