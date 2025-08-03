@@ -55,12 +55,14 @@ class Agent {
                 position_.handle_incoming_message(message, from_addr, from_port);
             });
 
-        lora_position_.set_message_handler([this](const impulse::Position &msg, const std::string address,
-                                                  const uint16_t) { all_position_[address] = msg; });
-        lora_interface->set_message_callback(
-            [this](const std::string &message, const std::string &from_addr, uint16_t /* from_port */) {
-                lora_position_.handle_incoming_message(message, from_addr, 0);
-            });
+        if (lora_interface->is_connected()) {
+            lora_position_.set_message_handler([this](const impulse::Position &msg, const std::string address,
+                                                      const uint16_t) { all_position_[address] = msg; });
+            lora_interface->set_message_callback(
+                [this](const std::string &message, const std::string &from_addr, uint16_t /* from_port */) {
+                    lora_position_.handle_incoming_message(message, from_addr, 0);
+                });
+        }
     }
 
     inline ~Agent() {}
