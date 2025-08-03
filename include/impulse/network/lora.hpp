@@ -27,11 +27,18 @@ namespace impulse {
     // Protocol constants matching melodi firmware
     enum SerialCommand : uint8_t {
         CMD_SEND_MESSAGE = 0x01,
-        CMD_SET_IPV6 = 0x02,
         CMD_GET_STATUS = 0x03,
         CMD_SET_CONFIG = 0x04,
         CMD_RESET_NODE = 0x05,
         CMD_GET_NEIGHBORS = 0x06
+    };
+
+    // Configuration sub-types for CMD_SET_CONFIG
+    enum ConfigType : uint8_t {
+        CONFIG_TX_POWER = 0x01,
+        CONFIG_FREQUENCY = 0x02,
+        CONFIG_HOP_LIMIT = 0x03,
+        CONFIG_IPV6_ADDRESS = 0x04
     };
 
     enum ResponseType : uint8_t {
@@ -48,7 +55,8 @@ namespace impulse {
         ERR_RADIO_FAILURE = 0x03,
         ERR_BUFFER_OVERFLOW = 0x04,
         ERR_TIMEOUT = 0x05,
-        ERR_CHECKSUM_FAILED = 0x06
+        ERR_CHECKSUM_FAILED = 0x06,
+        ERR_MESSAGE_TOO_LARGE = 0x07
     };
 
     struct LoRaStatus {
@@ -97,6 +105,9 @@ namespace impulse {
 
         // Broadcast address constant
         static constexpr const char *BROADCAST_IPV6 = "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff";
+        
+        // Default repeat count for message transmission
+        uint8_t default_repeat_count_ = 1;
 
         // Address conversion helpers
         inline std::vector<uint8_t> string_to_ipv6_bytes(const std::string &addr) {
@@ -234,7 +245,13 @@ namespace impulse {
             if (wait_result) {
                 response = pending_responses_[static_cast<uint8_t>(cmd)];
                 pending_responses_.erase(static_cast<uint8_t>(cmd));
-                return true;
+                
+                // Check if it's ACK or NACK
+                if (response.size() >= 5) {
+                    ResponseType resp_type = static_cast<ResponseType>(response[4]);
+                    return resp_type == RESP_ACK;  // Return true only for ACK
+                }
+                return false;
             }
 
             return false;
@@ -256,7 +273,7 @@ namespace impulse {
                     std::string src_addr = ipv6_bytes_to_string(src_bytes);
                     uint16_t msg_len = (data[17] << 8) | data[18];
 
-                    if (data.size() >= 19 + msg_len) {
+                    if (data.size() >= 19 + static_cast<size_t>(msg_len)) {
                         std::string message(data.begin() + 19, data.begin() + 19 + msg_len);
 
                         // Add to message queue
@@ -276,15 +293,38 @@ namespace impulse {
                 break;
             }
 
-            case RESP_ACK:
-            case RESP_NACK:
+            case RESP_ACK: {
+                // ACK format: [original_cmd]
+                if (data.size() >= 1) {
+                    std::lock_guard<std::mutex> lock(command_mutex_);
+                    uint8_t original_cmd = data[0];
+                    pending_responses_[original_cmd] = packet;  // Store full packet
+                    command_response_.notify_all();
+                }
+                break;
+            }
+            
+            case RESP_NACK: {
+                // NACK format: [original_cmd][error_code]
+                if (data.size() >= 2) {
+                    std::lock_guard<std::mutex> lock(command_mutex_);
+                    uint8_t original_cmd = data[0];
+                    uint8_t error_code = data[1];
+                    std::cerr << "NACK received for command 0x" << std::hex << (int)original_cmd 
+                              << " with error 0x" << (int)error_code << std::dec << std::endl;
+                    pending_responses_[original_cmd] = packet;  // Store full packet
+                    command_response_.notify_all();
+                }
+                break;
+            }
+            
             case RESP_STATUS:
             case RESP_ERROR: {
                 // Store response for waiting command
                 std::lock_guard<std::mutex> lock(command_mutex_);
                 if (!data.empty()) {
                     uint8_t original_cmd = data[0];
-                    pending_responses_[original_cmd] = data;
+                    pending_responses_[original_cmd] = packet;  // Store full packet
                 }
                 command_response_.notify_all();
                 break;
@@ -461,6 +501,10 @@ namespace impulse {
 
         inline void send_message(const std::string &dest_addr, uint16_t /* dest_port */,
                                  const std::string &msg) override {
+            send_message_with_repeat(dest_addr, msg, default_repeat_count_);
+        }
+
+        inline void send_message_with_repeat(const std::string &dest_addr, const std::string &msg, uint8_t repeat_count) {
             if (!running_ || !serial_connected_) {
                 std::cerr << "LoRa interface not connected" << std::endl;
                 return;
@@ -479,13 +523,16 @@ namespace impulse {
                 return;
             }
 
-            // Prepare command data: [2 bytes: length][16 bytes: dest][N bytes: payload]
+            // Prepare command data: [2 bytes: length][1 byte: repeat][16 bytes: dest][N bytes: payload]
             std::vector<uint8_t> command_data;
 
             // Payload length (big-endian)
             uint16_t payload_len = msg.length();
             command_data.push_back((payload_len >> 8) & 0xFF);
             command_data.push_back(payload_len & 0xFF);
+
+            // Repeat count (1-255)
+            command_data.push_back(repeat_count);
 
             // Destination IPv6
             command_data.insert(command_data.end(), dest_bytes.begin(), dest_bytes.end());
@@ -495,14 +542,16 @@ namespace impulse {
 
             // Send command
             if (send_command(CMD_SEND_MESSAGE, command_data)) {
-                std::cout << "LoRa message sent to " << dest_addr << ": " << msg.substr(0, 50)
-                          << (msg.length() > 50 ? "..." : "") << std::endl;
+                std::cout << "LoRa message sent to " << dest_addr << " (repeat=" << (int)repeat_count << "): " 
+                          << msg.substr(0, 50) << (msg.length() > 50 ? "..." : "") << std::endl;
             } else {
                 std::cerr << "Failed to send LoRa message to " << dest_addr << std::endl;
             }
         }
 
-        inline void multicast_message(const std::string &msg) override { send_message(BROADCAST_IPV6, 0, msg); }
+        inline void multicast_message(const std::string &msg) override { 
+            send_message_with_repeat(BROADCAST_IPV6, msg, default_repeat_count_); 
+        }
 
         inline void multicast_to_group(const std::vector<std::string> &dest_addrs, uint16_t dest_port,
                                        const std::string &msg) override {
@@ -540,10 +589,19 @@ namespace impulse {
                 return false;
             }
 
-            if (send_command(CMD_SET_IPV6, ipv6_bytes)) {
-                node_ipv6_ = ipv6_addr;
-                std::cout << "LoRa node IPv6 address set to: " << ipv6_addr << std::endl;
-                return true;
+            // Use CMD_SET_CONFIG with CONFIG_IPV6_ADDRESS sub-type
+            std::vector<uint8_t> config_data;
+            config_data.push_back(CONFIG_IPV6_ADDRESS);
+            config_data.insert(config_data.end(), ipv6_bytes.begin(), ipv6_bytes.end());
+
+            if (send_command(CMD_SET_CONFIG, config_data)) {
+                // Wait for ACK
+                std::vector<uint8_t> response;
+                if (wait_for_response(CMD_SET_CONFIG, response, std::chrono::milliseconds(2000))) {
+                    node_ipv6_ = ipv6_addr;
+                    std::cout << "LoRa node IPv6 address set to: " << ipv6_addr << std::endl;
+                    return true;
+                }
             }
 
             return false;
@@ -557,21 +615,35 @@ namespace impulse {
             }
 
             std::vector<uint8_t> response;
-            if (send_command(CMD_GET_STATUS) && wait_for_response(CMD_GET_STATUS, response)) {
-                if (response.size() >= 25) {
-                    // Parse status response: [16 bytes IPv6][1 byte radio][1 byte power][4 bytes freq][1 byte hop][2
-                    // bytes uptime]
-                    std::vector<uint8_t> ipv6_bytes(response.begin(), response.begin() + 16);
-                    status.current_ipv6 = ipv6_bytes_to_string(ipv6_bytes);
-                    status.radio_active = response[16] != 0;
-                    status.tx_power = response[17];
-                    status.frequency_hz =
-                        (response[18] << 24) | (response[19] << 16) | (response[20] << 8) | response[21];
-                    status.hop_limit = response[22];
-                    status.uptime_seconds = (response[23] << 8) | response[24];
+            if (send_command(CMD_GET_STATUS)) {
+                // Wait for RESP_STATUS specifically
+                std::unique_lock<std::mutex> lock(command_mutex_);
+                auto wait_result = command_response_.wait_for(lock, command_timeout_, [this] {
+                    return pending_responses_.find(static_cast<uint8_t>(CMD_GET_STATUS)) != pending_responses_.end();
+                });
+                
+                if (wait_result) {
+                    response = pending_responses_[static_cast<uint8_t>(CMD_GET_STATUS)];
+                    pending_responses_.erase(static_cast<uint8_t>(CMD_GET_STATUS));
+                    
+                    // Check if it's RESP_STATUS
+                    if (response.size() >= 5 && response[4] == RESP_STATUS) {
+                        // Status data starts at index 5
+                        if (response.size() >= 30) { // 5 + 25 bytes of status data
+                            // Parse status response: [16 bytes IPv6][1 byte radio][1 byte power][4 bytes freq][1 byte hop][2 bytes uptime]
+                            std::vector<uint8_t> ipv6_bytes(response.begin() + 5, response.begin() + 21);
+                            status.current_ipv6 = ipv6_bytes_to_string(ipv6_bytes);
+                            status.radio_active = response[21] != 0;
+                            status.tx_power = response[22];
+                            status.frequency_hz =
+                                (response[23] << 24) | (response[24] << 16) | (response[25] << 8) | response[26];
+                            status.hop_limit = response[27];
+                            status.uptime_seconds = (response[28] << 8) | response[29];
 
-                    std::lock_guard<std::mutex> lock(status_mutex_);
-                    current_status_ = status;
+                            std::lock_guard<std::mutex> lock2(status_mutex_);
+                            current_status_ = status;
+                        }
+                    }
                 }
             }
 
@@ -581,22 +653,38 @@ namespace impulse {
         inline bool reset_node() { return send_command(CMD_RESET_NODE); }
 
         inline bool set_tx_power(uint8_t power) {
-            std::vector<uint8_t> config_data = {0x01, power}; // Config type 0x01 = TX power
-            return send_command(CMD_SET_CONFIG, config_data);
+            std::vector<uint8_t> config_data = {CONFIG_TX_POWER, power};
+            if (send_command(CMD_SET_CONFIG, config_data)) {
+                std::vector<uint8_t> response;
+                return wait_for_response(CMD_SET_CONFIG, response, std::chrono::milliseconds(2000));
+            }
+            return false;
         }
 
         inline bool set_frequency(uint32_t frequency_hz) {
-            std::vector<uint8_t> config_data = {0x02}; // Config type 0x02 = frequency
+            std::vector<uint8_t> config_data = {CONFIG_FREQUENCY};
             config_data.push_back((frequency_hz >> 24) & 0xFF);
             config_data.push_back((frequency_hz >> 16) & 0xFF);
             config_data.push_back((frequency_hz >> 8) & 0xFF);
             config_data.push_back(frequency_hz & 0xFF);
-            return send_command(CMD_SET_CONFIG, config_data);
+            if (send_command(CMD_SET_CONFIG, config_data)) {
+                std::vector<uint8_t> response;
+                return wait_for_response(CMD_SET_CONFIG, response, std::chrono::milliseconds(2000));
+            }
+            return false;
         }
 
         inline bool set_hop_limit(uint8_t hop_limit) {
-            std::vector<uint8_t> config_data = {0x03, hop_limit}; // Config type 0x03 = hop limit
-            return send_command(CMD_SET_CONFIG, config_data);
+            if (hop_limit < 1 || hop_limit > 15) {
+                std::cerr << "Hop limit must be between 1 and 15" << std::endl;
+                return false;
+            }
+            std::vector<uint8_t> config_data = {CONFIG_HOP_LIMIT, hop_limit};
+            if (send_command(CMD_SET_CONFIG, config_data)) {
+                std::vector<uint8_t> response;
+                return wait_for_response(CMD_SET_CONFIG, response, std::chrono::milliseconds(2000));
+            }
+            return false;
         }
 
         // Connection management
@@ -620,6 +708,17 @@ namespace impulse {
             }
 
             return messages;
+        }
+
+        // Set default repeat count for all messages
+        inline void set_default_repeat_count(uint8_t repeat_count) {
+            if (repeat_count >= 1) {
+                default_repeat_count_ = repeat_count;
+            }
+        }
+
+        inline uint8_t get_default_repeat_count() const {
+            return default_repeat_count_;
         }
     };
 

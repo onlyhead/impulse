@@ -34,26 +34,27 @@ class Agent {
           communication_(name, network_interface), position_(name, network_interface),
           lora_position_(name, lora_interface) {
 
-        all_discoveries_[address_] = discovery_msg;
-        discovery_.set_message_handler([this](const impulse::Discovery &msg, const std::string address,
-                                              const uint16_t) { all_discoveries_[address] = msg; });
-        discovery_.set_broadcast(discovery_msg);
-
-        all_communication_[address_] = communication_msg;
-        communication_.set_message_handler([this](const impulse::Communication &msg, const std::string address,
-                                                  const uint16_t) { all_communication_[address] = msg; });
-        communication_.set_broadcast(communication_msg);
-
-        position_.set_message_handler([this](const impulse::Position &msg, const std::string address, const uint16_t) {
-            all_position_[address] = msg;
-        });
-
-        network_interface->set_message_callback(
-            [this](const std::string &message, const std::string &from_addr, uint16_t from_port) {
-                discovery_.handle_incoming_message(message, from_addr, from_port);
-                communication_.handle_incoming_message(message, from_addr, from_port);
-                position_.handle_incoming_message(message, from_addr, from_port);
-            });
+        // all_discoveries_[address_] = discovery_msg;
+        // discovery_.set_message_handler([this](const impulse::Discovery &msg, const std::string address,
+        //                                       const uint16_t) { all_discoveries_[address] = msg; });
+        // discovery_.set_broadcast(discovery_msg);
+        //
+        // all_communication_[address_] = communication_msg;
+        // communication_.set_message_handler([this](const impulse::Communication &msg, const std::string address,
+        //                                           const uint16_t) { all_communication_[address] = msg; });
+        // communication_.set_broadcast(communication_msg);
+        //
+        // position_.set_message_handler([this](const impulse::Position &msg, const std::string address, const uint16_t)
+        // {
+        //     all_position_[address] = msg;
+        // });
+        //
+        // network_interface->set_message_callback(
+        //     [this](const std::string &message, const std::string &from_addr, uint16_t from_port) {
+        //         discovery_.handle_incoming_message(message, from_addr, from_port);
+        //         communication_.handle_incoming_message(message, from_addr, from_port);
+        //         position_.handle_incoming_message(message, from_addr, from_port);
+        //     });
 
         lora_position_.set_message_handler([this](const impulse::Position &msg, const std::string address,
                                                   const uint16_t) { all_position_[address] = msg; });
@@ -95,7 +96,7 @@ int main(int argc, char *argv[]) {
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
 
-    impulse::LanInterface lan("eno2");
+    impulse::LanInterface lan("eno1");
     if (!lan.start()) {
         std::cerr << "Failed to start LAN interface" << std::endl;
         return 1;
