@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.2.0] - 2025-08-04
+
+### <!-- 0 -->⛰️  Features
+
+- Refactor IPv6 network configuration and setup
+- Integrate Protocol Buffers for structured data serialization
+
+### <!-- 1 -->🐛 Bug Fixes
+
+- Refactor: Fix agent instantiation issue
+
+### <!-- 2 -->🚜 Refactor
+
+- Unify transport management and enable IPv6 support
+- Refactor: Improve clarity and configurability of LAN interfaces
+
+### Build
+
+- Remove Protobuf from all test files
+
 ## [0.1.0] - 2025-08-03
 
 ### <!-- 0 -->⛰️  Features
