@@ -31,114 +31,46 @@ namespace impulse {
         std::thread receive_thread_;
         bool owns_interface_;
 
-        inline int create_tun_interface(const std::string &name) {
-            int fd = open("/dev/net/tun", O_RDWR);
-            if (fd < 0) {
-                std::cerr << "Error opening /dev/net/tun: " << strerror(errno) << std::endl;
-                return -1;
-            }
-
-            struct ifreq ifr;
-            memset(&ifr, 0, sizeof(ifr));
-            ifr.ifr_flags = IFF_TUN | IFF_NO_PI;
-            strncpy(ifr.ifr_name, name.c_str(), IFNAMSIZ - 1);
-
-            if (ioctl(fd, TUNSETIFF, &ifr) < 0) {
-                std::cerr << "Error creating TUN interface " << name << ": " << strerror(errno) << std::endl;
-                close(fd);
-                return -1;
-            }
-
-            if (ioctl(fd, TUNSETPERSIST, 1) < 0) {
-                std::cerr << "Error making TUN persistent: " << strerror(errno) << std::endl;
-                close(fd);
-                return -1;
-            }
-
-            std::cout << "Created persistent TUN interface: " << ifr.ifr_name << std::endl;
-
-            std::string cmd = "ip link set " + std::string(ifr.ifr_name) + " up";
-            if (system(cmd.c_str()) != 0) {
-                std::cerr << "Failed to bring interface up" << std::endl;
-            }
-
-            return fd;
-        }
-
-        inline std::string generate_robot_ipv6(int robot_id) {
-            char ipv6_buf[INET6_ADDRSTRLEN];
-            snprintf(ipv6_buf, sizeof(ipv6_buf), "fd00:dead:beef::%04x", robot_id);
-
-            // Normalize the address using inet_pton/inet_ntop to ensure consistent format
-            struct sockaddr_in6 sa;
-            char normalized[INET6_ADDRSTRLEN];
-            if (inet_pton(AF_INET6, ipv6_buf, &sa.sin6_addr) == 1) {
-                if (inet_ntop(AF_INET6, &sa.sin6_addr, normalized, INET6_ADDRSTRLEN)) {
-                    return std::string(normalized);
-                }
-            }
-            return std::string(ipv6_buf);
-        }
-
-        inline bool setup_interface() {
-            if (owns_interface_) {
-                int tun_fd = create_tun_interface(interface_name_);
-                if (tun_fd < 0) {
-                    std::cerr << "Failed to create interface, falling back to loopback" << std::endl;
-                    interface_name_ = "lo";
-                    owns_interface_ = false;
-                } else {
-                    close(tun_fd);
-                }
-            }
-
-            std::string cmd = "ip -6 addr add " + address_ + "/64 dev " + interface_name_ + " 2>/dev/null";
-            if (system(cmd.c_str()) != 0) {
-                std::cerr << "Failed to add IPv6 address (try with sudo)" << std::endl;
-                return false; // Return false when IPv6 setup fails
-            } else {
-                std::cout << "Added IPv6 address " << address_ << " to " << interface_name_ << std::endl;
-            }
-
-            return true;
-        }
-
-        inline void receive_loop() {
-            char buffer[1024];
-            struct sockaddr_in6 from;
-            socklen_t from_len;
-
-            while (running_) {
-                from_len = sizeof(from);
-                ssize_t received =
-                    recvfrom(socket_fd_, buffer, sizeof(buffer), MSG_DONTWAIT, (struct sockaddr *)&from, &from_len);
-
-                if (received > 0) {
-                    char addr_str[INET6_ADDRSTRLEN];
-                    inet_ntop(AF_INET6, &from.sin6_addr, addr_str, sizeof(addr_str));
-
-                    // Skip messages from ourselves
-                    if (std::string(addr_str) == address_) {
-                        continue;
-                    }
-
-                    // If callback is set, call it with the binary data
-                    if (message_callback_) {
-                        std::string message(buffer, received);
-                        message_callback_(message, std::string(addr_str), ntohs(from.sin6_port));
-                    } else {
-                        // Fallback to text printing for non-callback users
-                        buffer[std::min((ssize_t)1023, received)] = '\0';
-                        std::cout << address_ << " received: \"" << buffer << "\" from [" << addr_str
-                                  << "]:" << ntohs(from.sin6_port) << std::endl;
-                    }
-                }
-
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            }
-        }
-
       public:
+        inline LanInterface(const std::string &interface = "", uint16_t port = 7447, const std::string &ipv6_addr = "",
+                            ipv6_type type = ipv6_type::ULA)
+            : socket_fd_(-1), owns_interface_(false) {
+
+            port_ = port;
+
+            if (interface.empty()) {
+                interface_name_ = "robot_auto";
+                owns_interface_ = true;
+            } else {
+                interface_name_ = interface;
+                // Check if interface already exists
+                owns_interface_ = (if_nametoindex(interface.c_str()) == 0);
+            }
+
+            if (!ipv6_addr.empty()) {
+                address_ = ipv6_addr;
+            } else {
+                switch (type) {
+                case ipv6_type::OS:
+                    address_ = request_dhcpv6_address();
+                    break;
+                case ipv6_type::ULA: {
+                    std::random_device rd;
+                    std::mt19937 gen(rd());
+                    std::uniform_int_distribution<> dis(1, 65535);
+                    int robot_id = dis(gen);
+                    address_ = generate_robot_ipv6(robot_id);
+                    break;
+                }
+                case ipv6_type::DHCP:
+                    address_ = request_dhcpv6_address();
+                    break;
+                }
+            }
+        }
+
+        inline ~LanInterface() { stop(); }
+
         inline std::string request_dhcpv6_address() {
             int sock = socket(AF_INET6, SOCK_DGRAM, 0);
             if (sock < 0) return generate_robot_ipv6(rand());
@@ -196,45 +128,6 @@ namespace impulse {
             close(sock);
             return generate_robot_ipv6(rand()); // Fallback to ULA
         }
-
-        inline LanInterface(const std::string &interface = "", uint16_t port = 7447, const std::string &ipv6_addr = "",
-                            ipv6_type type = ipv6_type::ULA)
-            : socket_fd_(-1), owns_interface_(false) {
-
-            port_ = port;
-
-            if (interface.empty()) {
-                interface_name_ = "robot_auto";
-                owns_interface_ = true;
-            } else {
-                interface_name_ = interface;
-                // Check if interface already exists
-                owns_interface_ = (if_nametoindex(interface.c_str()) == 0);
-            }
-
-            if (!ipv6_addr.empty()) {
-                address_ = ipv6_addr;
-            } else {
-                switch (type) {
-                case ipv6_type::OS:
-                    address_ = request_dhcpv6_address();
-                    break;
-                case ipv6_type::ULA: {
-                    std::random_device rd;
-                    std::mt19937 gen(rd());
-                    std::uniform_int_distribution<> dis(1, 65535);
-                    int robot_id = dis(gen);
-                    address_ = generate_robot_ipv6(robot_id);
-                    break;
-                }
-                case ipv6_type::DHCP:
-                    address_ = request_dhcpv6_address();
-                    break;
-                }
-            }
-        }
-
-        inline ~LanInterface() { stop(); }
 
         inline bool start() override {
             if (!setup_interface()) {
@@ -441,6 +334,114 @@ namespace impulse {
 
         // LAN-specific methods
         inline const std::string &get_ipv6() const { return address_; }
+
+      private:
+        inline int create_tun_interface(const std::string &name) {
+            int fd = open("/dev/net/tun", O_RDWR);
+            if (fd < 0) {
+                std::cerr << "Error opening /dev/net/tun: " << strerror(errno) << std::endl;
+                return -1;
+            }
+
+            struct ifreq ifr;
+            memset(&ifr, 0, sizeof(ifr));
+            ifr.ifr_flags = IFF_TUN | IFF_NO_PI;
+            strncpy(ifr.ifr_name, name.c_str(), IFNAMSIZ - 1);
+
+            if (ioctl(fd, TUNSETIFF, &ifr) < 0) {
+                std::cerr << "Error creating TUN interface " << name << ": " << strerror(errno) << std::endl;
+                close(fd);
+                return -1;
+            }
+
+            if (ioctl(fd, TUNSETPERSIST, 1) < 0) {
+                std::cerr << "Error making TUN persistent: " << strerror(errno) << std::endl;
+                close(fd);
+                return -1;
+            }
+
+            std::cout << "Created persistent TUN interface: " << ifr.ifr_name << std::endl;
+
+            std::string cmd = "ip link set " + std::string(ifr.ifr_name) + " up";
+            if (system(cmd.c_str()) != 0) {
+                std::cerr << "Failed to bring interface up" << std::endl;
+            }
+
+            return fd;
+        }
+
+        inline std::string generate_robot_ipv6(int robot_id) {
+            char ipv6_buf[INET6_ADDRSTRLEN];
+            snprintf(ipv6_buf, sizeof(ipv6_buf), "fd00:dead:beef::%04x", robot_id);
+
+            // Normalize the address using inet_pton/inet_ntop to ensure consistent format
+            struct sockaddr_in6 sa;
+            char normalized[INET6_ADDRSTRLEN];
+            if (inet_pton(AF_INET6, ipv6_buf, &sa.sin6_addr) == 1) {
+                if (inet_ntop(AF_INET6, &sa.sin6_addr, normalized, INET6_ADDRSTRLEN)) {
+                    return std::string(normalized);
+                }
+            }
+            return std::string(ipv6_buf);
+        }
+
+        inline bool setup_interface() {
+            if (owns_interface_) {
+                int tun_fd = create_tun_interface(interface_name_);
+                if (tun_fd < 0) {
+                    std::cerr << "Failed to create interface, falling back to loopback" << std::endl;
+                    interface_name_ = "lo";
+                    owns_interface_ = false;
+                } else {
+                    close(tun_fd);
+                }
+            }
+
+            std::string cmd = "ip -6 addr add " + address_ + "/64 dev " + interface_name_ + " 2>/dev/null";
+            if (system(cmd.c_str()) != 0) {
+                std::cerr << "Failed to add IPv6 address (try with sudo)" << std::endl;
+                return false; // Return false when IPv6 setup fails
+            } else {
+                std::cout << "Added IPv6 address " << address_ << " to " << interface_name_ << std::endl;
+            }
+
+            return true;
+        }
+
+        inline void receive_loop() {
+            char buffer[1024];
+            struct sockaddr_in6 from;
+            socklen_t from_len;
+
+            while (running_) {
+                from_len = sizeof(from);
+                ssize_t received =
+                    recvfrom(socket_fd_, buffer, sizeof(buffer), MSG_DONTWAIT, (struct sockaddr *)&from, &from_len);
+
+                if (received > 0) {
+                    char addr_str[INET6_ADDRSTRLEN];
+                    inet_ntop(AF_INET6, &from.sin6_addr, addr_str, sizeof(addr_str));
+
+                    // Skip messages from ourselves
+                    if (std::string(addr_str) == address_) {
+                        continue;
+                    }
+
+                    // If callback is set, call it with the binary data
+                    if (message_callback_) {
+                        std::string message(buffer, received);
+                        message_callback_(message, std::string(addr_str), ntohs(from.sin6_port));
+                    } else {
+                        // Fallback to text printing for non-callback users
+                        buffer[std::min((ssize_t)1023, received)] = '\0';
+                        std::cout << address_ << " received: \"" << buffer << "\" from [" << addr_str
+                                  << "]:" << ntohs(from.sin6_port) << std::endl;
+                    }
+                }
+
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+        }
     };
 
 } // namespace impulse

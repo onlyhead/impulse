@@ -2,6 +2,24 @@
 
 A header-only C++ library for building distributed systems with automatic agent discovery and continuous messaging capabilities.
 
+## Running Without Sudo
+
+This library requires network interface creation and configuration. Instead of running with sudo, configure user permissions:
+
+```bash
+# Add user to network group
+sudo usermod -a -G netdev $USER
+
+# Create TUN access rule: /etc/udev/rules.d/99-tun.rules
+KERNEL=="tun", GROUP="netdev", MODE="0664"
+
+# For LoRa serial access
+sudo usermod -a -G dialout $USER
+
+# Reload udev rules and reboot
+sudo udevadm control --reload-rules
+```
+
 ## Features
 
 - **Generic Transport Layer**: Template-based transport supporting any message type
