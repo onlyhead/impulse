@@ -48,7 +48,6 @@ class Agent {
         lan_interface->add_transport(position_);
 
         lora_position_ = std::make_shared<impulse::Transport<impulse::Position>>(name, lora_interface);
-
         lora_position_->set_message_handler([this](const impulse::Position &msg, const std::string address,
                                                    const uint16_t) { all_position_[address] = msg; });
         lora_interface->add_transport(lora_position_);
