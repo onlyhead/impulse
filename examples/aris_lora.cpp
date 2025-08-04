@@ -81,21 +81,23 @@ void signal_handler(int signal) {
 
 int main(int argc, char *argv[]) {
     int count = 0;
-    if (argc < 2 || argc > 3) {
-        std::cerr << "Usage: " << argv[0] << " <robot_name> [serial_port]" << std::endl;
-        std::cerr << "Example: " << argv[0] << " Tractor-Alpha /dev/ttyUSB0" << std::endl;
-        std::cerr << "Example: " << argv[0] << " Tractor-Alpha (LAN only)" << std::endl;
+    if (argc < 3 || argc > 4) {
+        std::cerr << "Usage: " << argv[0] << " <robot_name> <serial_port> [IPv6 address]" << std::endl;
+        std::cerr << "Example: " << argv[0] << " Tractor-Alpha /dev/ttyUSB0 fd00:dead:beef::1" << std::endl;
+        std::cerr << "Example: " << argv[0] << " Tractor-Alpha /dev/ttyUSB0 (LAN only)" << std::endl;
         return 1;
     }
 
     std::string robot_name = argv[1];
-    std::string lora_port = (argc == 3) ? argv[2] : "";
+    std::string lora_port = argv[2];
+
+    std::string ipv6_addr = argc == 4 ? argv[3] : "";
     std::cout << "=== ARIS Robot: " << robot_name << " ===\n" << std::endl;
 
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
 
-    impulse::LanInterface lan("eno2");
+    impulse::LanInterface lan("eno2", ipv6_addr);
     if (!lan.start()) {
         std::cerr << "Failed to start LAN interface" << std::endl;
         return 1;

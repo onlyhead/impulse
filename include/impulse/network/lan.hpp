@@ -13,7 +13,7 @@
 #include <linux/if_tun.h>
 #include <net/if.h>
 #include <netinet/in.h>
-#include <random>
+#include <stdexcept>
 #include <string>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
@@ -23,111 +23,37 @@
 
 namespace impulse {
 
-    enum struct ipv6_type { OS, ULA, DHCP };
-
     class LanInterface : public NetworkInterface {
       private:
         int socket_fd_;
         std::thread receive_thread_;
-        bool owns_interface_;
+        bool needs_sudo_;
 
       public:
-        inline LanInterface(const std::string &interface = "", uint16_t port = 7447, const std::string &ipv6_addr = "",
-                            ipv6_type type = ipv6_type::ULA)
-            : socket_fd_(-1), owns_interface_(false) {
+        inline LanInterface(const std::string &interface_name, const std::string &ipv6_addr = "", uint16_t port = 7447)
+            : socket_fd_(-1), needs_sudo_(false) {
 
             port_ = port;
+            interface_name_ = interface_name;
 
-            if (interface.empty()) {
-                interface_name_ = "robot_auto";
-                owns_interface_ = true;
-            } else {
-                interface_name_ = interface;
-                // Check if interface already exists
-                owns_interface_ = (if_nametoindex(interface.c_str()) == 0);
+            // Check if interface exists
+            if (if_nametoindex(interface_name.c_str()) == 0) {
+                throw std::runtime_error("Interface " + interface_name + " does not exist");
             }
 
             if (!ipv6_addr.empty()) {
                 address_ = ipv6_addr;
+                needs_sudo_ = true; // Need sudo to assign custom IP
             } else {
-                switch (type) {
-                case ipv6_type::OS:
-                    address_ = request_dhcpv6_address();
-                    break;
-                case ipv6_type::ULA: {
-                    std::random_device rd;
-                    std::mt19937 gen(rd());
-                    std::uniform_int_distribution<> dis(1, 65535);
-                    int robot_id = dis(gen);
-                    address_ = generate_robot_ipv6(robot_id);
-                    break;
+                address_ = get_interface_ipv6(interface_name);
+                if (address_.empty()) {
+                    throw std::runtime_error("No IPv6 address found on interface " + interface_name);
                 }
-                case ipv6_type::DHCP:
-                    address_ = request_dhcpv6_address();
-                    break;
-                }
+                needs_sudo_ = false; // Using existing IP, no sudo needed
             }
         }
 
         inline ~LanInterface() { stop(); }
-
-        inline std::string request_dhcpv6_address() {
-            int sock = socket(AF_INET6, SOCK_DGRAM, 0);
-            if (sock < 0) return generate_robot_ipv6(rand());
-
-            // Bind to DHCPv6 client port
-            struct sockaddr_in6 client_addr = {};
-            client_addr.sin6_family = AF_INET6;
-            client_addr.sin6_port = htons(546); // DHCPv6 client port
-            if (bind(sock, (struct sockaddr *)&client_addr, sizeof(client_addr)) < 0) {
-                close(sock);
-                return generate_robot_ipv6(rand());
-            }
-
-            // Create DHCPv6 Solicit message
-            uint8_t message[1024] = {};
-            message[0] = 1;             // SOLICIT
-            message[1] = rand() & 0xFF; // Transaction ID
-            message[2] = rand() & 0xFF;
-            message[3] = rand() & 0xFF;
-
-            // Add IAID (Interface Association ID) - unique per robot
-            uint32_t iaid = rand();
-            memcpy(message + 4, &iaid, 4);
-
-            // Send to DHCPv6 server multicast
-            struct sockaddr_in6 server_addr = {};
-            server_addr.sin6_family = AF_INET6;
-            server_addr.sin6_port = htons(547);                       // DHCPv6 server port
-            inet_pton(AF_INET6, "ff02::1:2", &server_addr.sin6_addr); // All DHCP servers
-
-            sendto(sock, message, 8, 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
-
-            // Receive ADVERTISE response with timeout
-            fd_set readfds;
-            struct timeval timeout = {2, 0}; // 2 second timeout
-            FD_ZERO(&readfds);
-            FD_SET(sock, &readfds);
-
-            if (select(sock + 1, &readfds, nullptr, nullptr, &timeout) > 0) {
-                uint8_t response[1024];
-                socklen_t addr_len = sizeof(server_addr);
-                ssize_t len = recvfrom(sock, response, sizeof(response), 0, (struct sockaddr *)&server_addr, &addr_len);
-
-                if (len > 24) {
-                    // Extract IPv6 address from IA_NA option (simplified)
-                    struct in6_addr *assigned_addr = (struct in6_addr *)(response + 16);
-                    char addr_str[INET6_ADDRSTRLEN];
-                    inet_ntop(AF_INET6, assigned_addr, addr_str, INET6_ADDRSTRLEN);
-
-                    close(sock);
-                    return std::string(addr_str);
-                }
-            }
-
-            close(sock);
-            return generate_robot_ipv6(rand()); // Fallback to ULA
-        }
 
         inline bool start() override {
             if (!setup_interface()) {
@@ -184,10 +110,8 @@ namespace impulse {
                 receive_thread_.join();
             }
 
-            if (owns_interface_) {
-                std::string cmd = "ip link del " + interface_name_ + " 2>/dev/null";
-                system(cmd.c_str());
-            } else {
+            // Only remove IP if we added it (needs_sudo_ indicates we added custom IP)
+            if (needs_sudo_) {
                 std::string cmd = "ip -6 addr del " + address_ + "/64 dev " + interface_name_ + " 2>/dev/null";
                 system(cmd.c_str());
             }
@@ -336,73 +260,56 @@ namespace impulse {
         inline const std::string &get_ipv6() const { return address_; }
 
       private:
-        inline int create_tun_interface(const std::string &name) {
-            int fd = open("/dev/net/tun", O_RDWR);
-            if (fd < 0) {
-                std::cerr << "Error opening /dev/net/tun: " << strerror(errno) << std::endl;
-                return -1;
-            }
+        inline std::string get_interface_ipv6(const std::string &interface_name) {
+            // First try to get global scope IPv6
+            std::string cmd = "ip -6 addr show " + interface_name +
+                              " scope global | grep 'inet6' | head -1 | awk '{print $2}' | cut -d'/' -f1";
+            FILE *pipe = popen(cmd.c_str(), "r");
+            if (!pipe) return "";
 
-            struct ifreq ifr;
-            memset(&ifr, 0, sizeof(ifr));
-            ifr.ifr_flags = IFF_TUN | IFF_NO_PI;
-            strncpy(ifr.ifr_name, name.c_str(), IFNAMSIZ - 1);
-
-            if (ioctl(fd, TUNSETIFF, &ifr) < 0) {
-                std::cerr << "Error creating TUN interface " << name << ": " << strerror(errno) << std::endl;
-                close(fd);
-                return -1;
-            }
-
-            if (ioctl(fd, TUNSETPERSIST, 1) < 0) {
-                std::cerr << "Error making TUN persistent: " << strerror(errno) << std::endl;
-                close(fd);
-                return -1;
-            }
-
-            std::cout << "Created persistent TUN interface: " << ifr.ifr_name << std::endl;
-
-            std::string cmd = "ip link set " + std::string(ifr.ifr_name) + " up";
-            if (system(cmd.c_str()) != 0) {
-                std::cerr << "Failed to bring interface up" << std::endl;
-            }
-
-            return fd;
-        }
-
-        inline std::string generate_robot_ipv6(int robot_id) {
-            char ipv6_buf[INET6_ADDRSTRLEN];
-            snprintf(ipv6_buf, sizeof(ipv6_buf), "fd00:dead:beef::%04x", robot_id);
-
-            // Normalize the address using inet_pton/inet_ntop to ensure consistent format
-            struct sockaddr_in6 sa;
-            char normalized[INET6_ADDRSTRLEN];
-            if (inet_pton(AF_INET6, ipv6_buf, &sa.sin6_addr) == 1) {
-                if (inet_ntop(AF_INET6, &sa.sin6_addr, normalized, INET6_ADDRSTRLEN)) {
-                    return std::string(normalized);
+            char buffer[128];
+            std::string result = "";
+            if (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+                result = buffer;
+                // Remove newline
+                if (!result.empty() && result.back() == '\n') {
+                    result.pop_back();
                 }
             }
-            return std::string(ipv6_buf);
+            pclose(pipe);
+
+            // If no global address found, try link-local
+            if (result.empty()) {
+                cmd = "ip -6 addr show " + interface_name +
+                      " scope link | grep 'inet6' | head -1 | awk '{print $2}' | cut -d'/' -f1";
+                pipe = popen(cmd.c_str(), "r");
+                if (!pipe) return "";
+
+                if (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+                    result = buffer;
+                    // Remove newline
+                    if (!result.empty() && result.back() == '\n') {
+                        result.pop_back();
+                    }
+                }
+                pclose(pipe);
+            }
+
+            return result;
         }
 
         inline bool setup_interface() {
-            if (owns_interface_) {
-                int tun_fd = create_tun_interface(interface_name_);
-                if (tun_fd < 0) {
-                    std::cerr << "Failed to create interface, falling back to loopback" << std::endl;
-                    interface_name_ = "lo";
-                    owns_interface_ = false;
+            // Only add IP if we specified a custom one
+            if (needs_sudo_) {
+                std::string cmd = "ip -6 addr add " + address_ + "/64 dev " + interface_name_ + " 2>/dev/null";
+                if (system(cmd.c_str()) != 0) {
+                    std::cerr << "Failed to add IPv6 address " << address_ << " (try with sudo)" << std::endl;
+                    return false;
                 } else {
-                    close(tun_fd);
+                    std::cout << "Added IPv6 address " << address_ << " to " << interface_name_ << std::endl;
                 }
-            }
-
-            std::string cmd = "ip -6 addr add " + address_ + "/64 dev " + interface_name_ + " 2>/dev/null";
-            if (system(cmd.c_str()) != 0) {
-                std::cerr << "Failed to add IPv6 address (try with sudo)" << std::endl;
-                return false; // Return false when IPv6 setup fails
             } else {
-                std::cout << "Added IPv6 address " << address_ << " to " << interface_name_ << std::endl;
+                std::cout << "Using existing IPv6 address " << address_ << " on " << interface_name_ << std::endl;
             }
 
             return true;
