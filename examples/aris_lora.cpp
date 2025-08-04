@@ -17,56 +17,54 @@ class Agent {
   private:
     std::string name_;
     std::string address_;
-    // impulse::Transport<impulse::Discovery> discovery_;
-    // impulse::Transport<impulse::Communication> communication_;
-    // impulse::Transport<impulse::Position> position_;
-    // impulse::Transport<impulse::Position> lora_position_;
     std::shared_ptr<impulse::Transport<impulse::Position>> lora_position_;
+    std::shared_ptr<impulse::Transport<impulse::Discovery>> discovery_;
+    std::shared_ptr<impulse::Transport<impulse::Communication>> communication_;
+    std::shared_ptr<impulse::Transport<impulse::Position>> position_;
 
   public:
     std::map<std::string, impulse::Discovery> all_discoveries_;
     std::map<std::string, impulse::Communication> all_communication_;
     std::map<std::string, impulse::Position> all_position_;
 
-    inline Agent(const std::string &name, impulse::NetworkInterface *network_interface,
-                 impulse::NetworkInterface *lora_interface, impulse::Discovery &discovery_msg,
-                 impulse::Communication &communication_msg)
-        : name_(name), address_(network_interface->get_address()) {
-        //
-        // all_discoveries_[address_] = discovery_msg;
-        // discovery_.set_message_handler([this](const impulse::Discovery &msg, const std::string address,
-        //                                       const uint16_t) { all_discoveries_[address] = msg; });
-        // discovery_.set_broadcast(discovery_msg);
-        //
-        // all_communication_[address_] = communication_msg;
-        // communication_.set_message_handler([this](const impulse::Communication &msg, const std::string address,
-        //                                           const uint16_t) { all_communication_[address] = msg; });
-        // communication_.set_broadcast(communication_msg);
-        //
-        // position_.set_message_handler([this](const impulse::Position &msg, const std::string address, const uint16_t)
-        // {
-        //     all_position_[address] = msg;
-        // });
-        //
-        // network_interface->set_message_callback(
-        //     [this](const std::string &message, const std::string &from_addr, uint16_t from_port) {
-        //         discovery_.handle_incoming_message(message, from_addr, from_port);
-        //         communication_.handle_incoming_message(message, from_addr, from_port);
-        //         position_.handle_incoming_message(message, from_addr, from_port);
-        //     });
-        //
+    inline Agent(const std::string &name, impulse::NetworkInterface *lan_interface,
+                 impulse::NetworkInterface *lora_interface) {
+        name_ = name;
+        address_ = lan_interface->get_address();
+
+        discovery_ = std::make_shared<impulse::Transport<impulse::Discovery>>(name, lan_interface);
+        discovery_->set_message_handler([this](const impulse::Discovery &msg, const std::string address,
+                                               const uint16_t) { all_discoveries_[address] = msg; });
+        communication_ = std::make_shared<impulse::Transport<impulse::Communication>>(name, lan_interface);
+        communication_->set_message_handler([this](const impulse::Communication &msg, const std::string address,
+                                                   const uint16_t) { all_communication_[address] = msg; });
+        position_ = std::make_shared<impulse::Transport<impulse::Position>>(name, lan_interface);
+        position_->set_message_handler([this](const impulse::Position &msg, const std::string address, const uint16_t) {
+            all_position_[address] = msg;
+        });
+
+        lan_interface->add_transport(discovery_);
+        lan_interface->add_transport(communication_);
+        lan_interface->add_transport(position_);
 
         lora_position_ = std::make_shared<impulse::Transport<impulse::Position>>(name, lora_interface);
 
         lora_position_->set_message_handler([this](const impulse::Position &msg, const std::string address,
                                                    const uint16_t) { all_position_[address] = msg; });
-        lora_interface->set_message_callback(
-            [this](const std::string &message, const std::string &from_addr, uint16_t /* from_port */) {
-                lora_position_->handle_incoming_message(message, from_addr, 0);
-            });
+        lora_interface->add_transport(lora_position_);
     }
 
     inline ~Agent() {}
+
+    inline void set_broadcast(const impulse::Discovery &discovery_msg,
+                              const impulse::Communication &communication_msg) {
+        discovery_->set_broadcast(discovery_msg);
+        communication_->set_broadcast(communication_msg);
+
+        // add self to arrays
+        all_discoveries_[address_] = discovery_msg;
+        all_communication_[address_] = communication_msg;
+    }
 
     inline void update_position(const impulse::Position &position) {
         all_position_[address_] = position;
@@ -126,11 +124,13 @@ int main(int argc, char *argv[]) {
     self_comm_msg.transport_type = impulse::TransportType::dds;
     self_comm_msg.serialization_type = impulse::SerializationType::ros;
 
-    Agent participant(robot_name, &lan, &lora, self_msg, self_comm_msg);
+    Agent participant(robot_name, &lan, &lora);
 
     impulse::Position position_msg = {};
     position_msg.timestamp = now_time;
     position_msg.pose.point = {40.7128, -74.0060, 0.0};
+
+    participant.set_broadcast(self_msg, self_comm_msg);
     participant.update_position(position_msg);
 
     auto start_time = std::chrono::steady_clock::now();

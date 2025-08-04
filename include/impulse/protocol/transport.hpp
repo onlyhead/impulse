@@ -16,7 +16,7 @@
 
 namespace impulse {
 
-    template <typename MessageT = Message> class Transport {
+    template <typename MessageT = Message> class Transport : public TransportBase {
       private:
         std::string name_;
         uint64_t join_time_;
@@ -64,14 +64,19 @@ namespace impulse {
             }
         }
 
-        inline void send_message(const MessageT &msg) {
-            // Serialize and send via LAN interface
+        inline void send_message(const MessageT &msg, const std::string &ipv6_address = "") {
+            // Serialize message
             auto size = msg.get_size();
             std::vector<char> buffer(size);
             msg.serialize(buffer.data());
             std::string message(buffer.data(), size);
 
-            network_interface_->multicast_message(message);
+            // Send to specific address or broadcast
+            if (!ipv6_address.empty()) {
+                network_interface_->send_message(ipv6_address, network_interface_->get_port(), message);
+            } else {
+                network_interface_->multicast_message(message);
+            }
         }
 
         inline std::string get_address() const { return network_interface_->get_address(); }
